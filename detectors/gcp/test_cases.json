@@ -1,0 +1,24 @@
+{
+    "testCases": [
+        {
+            "description": "zonal gke cluster",
+            "metadata": {
+                "/computeMetadata/v1/project/project-id": "my-project",
+                "/computeMetadata/v1/instance/attributes/cluster-name": "my-cluster",
+                "/computeMetadata/v1/instance/attributes/cluster-location": "us-central1-c",
+                "/computeMetadata/v1/instance/id": "1472385723456792345"
+            },
+            "envVars": {
+                "KUBERNETES_SERVICE_HOST": "1.2.3.4"
+            },
+            "expectedAttributes": {
+                "cloud.provider": "gcp",
+                "cloud.account.id": "my-project",
+                "cloud.platform": "gcp_kubernetes_engine",
+                "k8s.cluster.name": "my-cluster",
+                "cloud.availability_zone": "us-central1-c",
+                "host.id": "1472385723456792345"
+            }
+        }
+    ]
+}

@@ -14,7 +14,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/semconv/v1.40.0/rpcconv"
+	oldrpcconv "go.opentelemetry.io/otel/semconv/v1.37.0/rpcconv"
 	"go.opentelemetry.io/otel/trace"
+
+
+
 	grpc_codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/stats"
@@ -30,16 +34,21 @@ type gRPCContext struct {
 	record      bool
 }
 
+type oldDurationRecorder interface {
+	Record(context.Context, float64, ...attribute.KeyValue)
+}
+
 type serverHandler struct {
 	*config
 
 	tracer trace.Tracer
 
 	duration    rpcconv.ServerCallDuration
-	oldDuration metric.Float64Histogram
+	oldDuration *oldrpcconv.ServerDuration
 }
 
 // NewServerHandler creates a stats.Handler for a gRPC server.
+
 func NewServerHandler(opts ...Option) stats.Handler {
 	c := newConfig(opts)
 	if c.SpanKind == trace.SpanKindUnspecified {
@@ -61,15 +70,21 @@ func NewServerHandler(opts ...Option) stats.Handler {
 
 	var err error
 	if c.semconvMode == semconvModeOld || c.semconvMode == semconvModeDup {
-		h.oldDuration, err = meter.Float64Histogram(
-			"rpc.server.duration",
-			metric.WithDescription("Measures the duration of inbound RPCs."),
-			metric.WithUnit("ms"),
-		)
+		oldDur, err := oldrpcconv.NewServerDuration(meter)
 		if err != nil {
 			otel.Handle(err)
+		} else {
+			h.oldDuration = &oldDur
 		}
 	}
+
+
+
+
+
+
+
+
 
 	if c.semconvMode == semconvModeNew || c.semconvMode == semconvModeDup {
 		h.duration, err = rpcconv.NewServerCallDuration(
@@ -173,16 +188,19 @@ func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	)
 }
 
+
+
 type clientHandler struct {
 	*config
 
 	tracer trace.Tracer
 
 	duration    rpcconv.ClientCallDuration
-	oldDuration metric.Float64Histogram
+	oldDuration *oldrpcconv.ClientDuration
 }
 
 // NewClientHandler creates a stats.Handler for a gRPC client.
+
 func NewClientHandler(opts ...Option) stats.Handler {
 	c := newConfig(opts)
 	if c.SpanKind == trace.SpanKindUnspecified {
@@ -204,15 +222,15 @@ func NewClientHandler(opts ...Option) stats.Handler {
 
 	var err error
 	if c.semconvMode == semconvModeOld || c.semconvMode == semconvModeDup {
-		h.oldDuration, err = meter.Float64Histogram(
-			"rpc.client.duration",
-			metric.WithDescription("Measures the duration of outbound RPCs."),
-			metric.WithUnit("ms"),
-		)
+		oldDur, err := oldrpcconv.NewClientDuration(meter)
 		if err != nil {
 			otel.Handle(err)
+		} else {
+			h.oldDuration = &oldDur
 		}
 	}
+
+
 
 	if c.semconvMode == semconvModeNew || c.semconvMode == semconvModeDup {
 		h.duration, err = rpcconv.NewClientCallDuration(
@@ -297,6 +315,8 @@ func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	)
 }
 
+
+
 // TagConn can attach some information to the given context.
 func (*clientHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
 	return ctx
@@ -311,7 +331,7 @@ func (c *config) handleRPC(
 	ctx context.Context,
 	rs stats.RPCStats,
 	duration metric.Float64Histogram,
-	oldDuration metric.Float64Histogram,
+	oldDuration oldDurationRecorder,
 	recordStatus func(*status.Status) (codes.Code, string),
 ) {
 	gctx, _ := ctx.Value(gRPCContextKey{}).(*gRPCContext)
@@ -371,8 +391,19 @@ func (c *config) handleRPC(
 			duration.Record(ctx, elapsedTime, recordOpts...)
 		}
 		if oldDuration != nil {
-			oldDuration.Record(ctx, elapsedTime*1000.0, recordOpts...)
+			switch d := oldDuration.(type) {
+			case *oldrpcconv.ServerDuration:
+				if d != nil {
+					d.Record(ctx, elapsedTime*1000.0, metricAttrs...)
+				}
+			case *oldrpcconv.ClientDuration:
+				if d != nil {
+					d.Record(ctx, elapsedTime*1000.0, metricAttrs...)
+				}
+			}
 		}
+
+
 	default:
 		return
 	}

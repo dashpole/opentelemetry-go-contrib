@@ -105,9 +105,6 @@ func parseSemconvMode() semconvMode {
 	}
 	return semconvModeNew
 }
-
-
-
 // WithPublicEndpoint configures the Handler to link the span with an incoming
 // span context. If this option is not provided, then the association is a child
 // association instead of a link.

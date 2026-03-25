@@ -34,10 +34,6 @@ type gRPCContext struct {
 	record      bool
 }
 
-type oldDurationRecorder interface {
-	Record(context.Context, float64, ...attribute.KeyValue)
-}
-
 type serverHandler struct {
 	*config
 
@@ -179,11 +175,15 @@ func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	if h.config.semconvMode == semconvModeNew || h.config.semconvMode == semconvModeDup {
 		dur = h.duration.Inst()
 	}
+	var oldDur metric.Float64Histogram
+	if (h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup) && h.oldDuration != nil {
+		oldDur = h.oldDuration.Inst()
+	}
 	h.handleRPC(
 		ctx,
 		rs,
 		dur,
-		h.oldDuration,
+		oldDur,
 		serverStatus,
 	)
 }
@@ -304,11 +304,15 @@ func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	if h.config.semconvMode == semconvModeNew || h.config.semconvMode == semconvModeDup {
 		dur = h.duration.Inst()
 	}
+	var oldDur metric.Float64Histogram
+	if (h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup) && h.oldDuration != nil {
+		oldDur = h.oldDuration.Inst()
+	}
 	h.handleRPC(
 		ctx,
 		rs,
 		dur,
-		h.oldDuration,
+		oldDur,
 		func(s *status.Status) (codes.Code, string) {
 			return codes.Error, s.Message()
 		},
@@ -331,7 +335,7 @@ func (c *config) handleRPC(
 	ctx context.Context,
 	rs stats.RPCStats,
 	duration metric.Float64Histogram,
-	oldDuration oldDurationRecorder,
+	oldDuration metric.Float64Histogram,
 	recordStatus func(*status.Status) (codes.Code, string),
 ) {
 	gctx, _ := ctx.Value(gRPCContextKey{}).(*gRPCContext)
@@ -391,16 +395,7 @@ func (c *config) handleRPC(
 			duration.Record(ctx, elapsedTime, recordOpts...)
 		}
 		if oldDuration != nil {
-			switch d := oldDuration.(type) {
-			case *oldrpcconv.ServerDuration:
-				if d != nil {
-					d.Record(ctx, elapsedTime*1000.0, metricAttrs...)
-				}
-			case *oldrpcconv.ClientDuration:
-				if d != nil {
-					d.Record(ctx, elapsedTime*1000.0, metricAttrs...)
-				}
-			}
+			oldDuration.Record(ctx, elapsedTime*1000.0, recordOpts...)
 		}
 
 

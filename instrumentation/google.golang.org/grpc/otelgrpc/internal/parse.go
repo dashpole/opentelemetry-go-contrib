@@ -35,7 +35,10 @@ func ParseFullMethod(fullMethod string) (string, []attribute.KeyValue) {
 // ParseFullMethodOld returns a span name following the old OpenTelemetry semantic
 // conventions as well as all applicable span attribute.KeyValue attributes based
 // on a gRPC's FullMethod.
+// Based on the implementation in:
+// https://github.com/open-telemetry/opentelemetry-go-contrib/blob/v0.64.0/instrumentation/google.golang.org/grpc/otelgrpc/stats_handler.go#L111
 func ParseFullMethodOld(fullMethod string) (string, []attribute.KeyValue) {
+
 	if !strings.HasPrefix(fullMethod, "/") {
 		return fullMethod, nil
 	}

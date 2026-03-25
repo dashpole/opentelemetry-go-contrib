@@ -79,18 +79,15 @@ func newConfig(opts []Option) *config {
 		Propagators:    otel.GetTextMapPropagator(),
 		TracerProvider: otel.GetTracerProvider(),
 		MeterProvider:  otel.GetMeterProvider(),
+		semconvMode:    parseSemconvMode(),
 	}
 	for _, o := range opts {
 		o.apply(c)
 	}
 
-	// Read environment variable.
-	// We read it after applying options, but option should not override it unless we want to allow it.
-	// Let's read it here.
-	c.semconvMode = parseSemconvMode()
-
 	return c
 }
+
 
 func parseSemconvMode() semconvMode {
 	val := os.Getenv("OTEL_SEMCONV_STABILITY_OPT_IN")

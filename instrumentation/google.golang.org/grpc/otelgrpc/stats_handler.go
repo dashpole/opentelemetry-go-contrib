@@ -39,8 +39,8 @@ type serverHandler struct {
 	oldDuration metric.Float64Histogram
 }
 
-
 // NewServerHandler creates a stats.Handler for a gRPC server.
+
 func NewServerHandler(opts ...Option) stats.Handler {
 	c := newConfig(opts)
 	if c.SpanKind == trace.SpanKindUnspecified {
@@ -88,8 +88,8 @@ func NewServerHandler(opts ...Option) stats.Handler {
 	return h
 }
 
-
 // TagConn can attach some information to the given context.
+
 func (*serverHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
 	return ctx
 }
@@ -161,8 +161,8 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 	return context.WithValue(ctx, gRPCContextKey{}, &gctx)
 }
 
-
 // HandleRPC processes the RPC stats.
+
 func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	var dur metric.Float64Histogram
 	if h.config.semconvMode == semconvModeNew || h.config.semconvMode == semconvModeDup {
@@ -177,8 +177,8 @@ func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	)
 }
 
-
 type clientHandler struct {
+
 	*config
 
 	tracer trace.Tracer
@@ -187,8 +187,8 @@ type clientHandler struct {
 	oldDuration metric.Float64Histogram
 }
 
-
 // NewClientHandler creates a stats.Handler for a gRPC client.
+
 func NewClientHandler(opts ...Option) stats.Handler {
 	c := newConfig(opts)
 	if c.SpanKind == trace.SpanKindUnspecified {

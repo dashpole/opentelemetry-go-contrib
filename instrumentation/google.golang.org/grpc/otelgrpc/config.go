@@ -5,6 +5,8 @@ package otelgrpc // import "go.opentelemetry.io/contrib/instrumentation/google.g
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/stats"
 )
+
 
 // ScopeName is the instrumentation scope name.
 const ScopeName = "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -28,6 +31,14 @@ type InterceptorFilter func(*InterceptorInfo) bool
 // should be instrumented by the attached RPC tag info.
 // A Filter must return true if the request should be instrumented.
 type Filter func(*stats.RPCTagInfo) bool
+
+type semconvMode int
+
+const (
+	semconvModeNew semconvMode = iota // Default
+	semconvModeOld
+	semconvModeDup
+)
 
 // config is a group of options for this instrumentation.
 type config struct {
@@ -47,6 +58,8 @@ type config struct {
 
 	ReceivedEvent bool
 	SentEvent     bool
+
+	semconvMode semconvMode
 }
 
 // Option applies an option value for a config.
@@ -70,8 +83,34 @@ func newConfig(opts []Option) *config {
 	for _, o := range opts {
 		o.apply(c)
 	}
+
+	// Read environment variable.
+	// We read it after applying options, but option should not override it unless we want to allow it.
+	// Let's read it here.
+	c.semconvMode = parseSemconvMode()
+
 	return c
 }
+
+func parseSemconvMode() semconvMode {
+	val := os.Getenv("OTEL_SEMCONV_STABILITY_OPT_IN")
+	if val == "" {
+		return semconvModeNew
+	}
+	parts := strings.Split(val, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "rpc/dup" {
+			return semconvModeDup
+		}
+		if p == "rpc/old" {
+			return semconvModeOld
+		}
+	}
+	return semconvModeNew
+}
+
+
 
 // WithPublicEndpoint configures the Handler to link the span with an incoming
 // span context. If this option is not provided, then the association is a child

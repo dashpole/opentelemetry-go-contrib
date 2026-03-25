@@ -572,3 +572,72 @@ func TestClientHandlerTagRPC(t *testing.T) {
 		})
 	}
 }
+
+func TestServerHandlerStabilityOld(t *testing.T) {
+	t.Setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "rpc/old")
+
+	sr := tracetest.NewSpanRecorder()
+	tp := trace.NewTracerProvider(trace.WithSpanProcessor(sr))
+
+	h := otelgrpc.NewServerHandler(otelgrpc.WithTracerProvider(tp))
+
+	ctx := context.Background()
+	info := &stats.RPCTagInfo{
+		FullMethodName: "/pkg.Service/Method",
+	}
+
+	ctx = h.TagRPC(ctx, info)
+
+	span := oteltrace.SpanFromContext(ctx)
+	require.True(t, span.IsRecording())
+
+	span.End()
+
+	spans := sr.Ended()
+	require.Len(t, spans, 1)
+
+	attrs := spans[0].Attributes()
+	assert.Contains(t, attrs, attribute.String("rpc.system", "grpc"))
+	assert.Contains(t, attrs, attribute.String("rpc.service", "pkg.Service"))
+	assert.Contains(t, attrs, attribute.String("rpc.method", "Method"))
+
+	assert.NotContains(t, attrs, attribute.String("rpc.system.name", "grpc"))
+	assert.NotContains(t, attrs, attribute.String("rpc.method", "pkg.Service/Method"))
+}
+
+func TestServerHandlerStabilityDup(t *testing.T) {
+	t.Setenv("OTEL_SEMCONV_STABILITY_OPT_IN", "rpc/dup")
+
+	sr := tracetest.NewSpanRecorder()
+	tp := trace.NewTracerProvider(trace.WithSpanProcessor(sr))
+
+	h := otelgrpc.NewServerHandler(otelgrpc.WithTracerProvider(tp))
+
+	ctx := context.Background()
+	info := &stats.RPCTagInfo{
+		FullMethodName: "/pkg.Service/Method",
+	}
+
+	ctx = h.TagRPC(ctx, info)
+
+	span := oteltrace.SpanFromContext(ctx)
+	require.True(t, span.IsRecording())
+
+	span.End()
+
+	spans := sr.Ended()
+	require.Len(t, spans, 1)
+
+	attrs := spans[0].Attributes()
+	// Should contain old rpc.system
+	assert.Contains(t, attrs, attribute.String("rpc.system", "grpc"))
+	assert.Contains(t, attrs, attribute.String("rpc.service", "pkg.Service"))
+
+	// Should contain new rpc.system.name
+	assert.Contains(t, attrs, attribute.String("rpc.system.name", "grpc"))
+
+	// For rpc.method, new should win (pkg.Service/Method)
+	assert.Contains(t, attrs, attribute.String("rpc.method", "pkg.Service/Method"))
+}
+
+

@@ -40,7 +40,7 @@ type serverHandler struct {
 	tracer trace.Tracer
 
 	duration    rpcconv.ServerCallDuration
-	oldDuration *oldrpcconv.ServerDuration
+	oldDuration oldrpcconv.ServerDuration
 }
 
 // NewServerHandler creates a stats.Handler for a gRPC server.
@@ -70,7 +70,7 @@ func NewServerHandler(opts ...Option) stats.Handler {
 		if err != nil {
 			otel.Handle(err)
 		} else {
-			h.oldDuration = &oldDur
+			h.oldDuration = oldDur
 		}
 	}
 
@@ -176,7 +176,7 @@ func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		dur = h.duration.Inst()
 	}
 	var oldDur metric.Float64Histogram
-	if (h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup) && h.oldDuration != nil {
+	if h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup {
 		oldDur = h.oldDuration.Inst()
 	}
 	h.handleRPC(
@@ -196,7 +196,7 @@ type clientHandler struct {
 	tracer trace.Tracer
 
 	duration    rpcconv.ClientCallDuration
-	oldDuration *oldrpcconv.ClientDuration
+	oldDuration oldrpcconv.ClientDuration
 }
 
 // NewClientHandler creates a stats.Handler for a gRPC client.
@@ -226,7 +226,7 @@ func NewClientHandler(opts ...Option) stats.Handler {
 		if err != nil {
 			otel.Handle(err)
 		} else {
-			h.oldDuration = &oldDur
+			h.oldDuration = oldDur
 		}
 	}
 
@@ -305,7 +305,7 @@ func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		dur = h.duration.Inst()
 	}
 	var oldDur metric.Float64Histogram
-	if (h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup) && h.oldDuration != nil {
+	if h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup {
 		oldDur = h.oldDuration.Inst()
 	}
 	h.handleRPC(

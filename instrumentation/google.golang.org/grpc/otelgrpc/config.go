@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/stats"
 )
 
-
 // ScopeName is the instrumentation scope name.
 const ScopeName = "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 

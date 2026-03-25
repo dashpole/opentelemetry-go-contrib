@@ -113,7 +113,7 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 		var attrsNew, attrsOld []attribute.KeyValue
 		name, attrsNew = internal.ParseFullMethod(info.FullMethodName)
 		_, attrsOld = internal.ParseFullMethodOld(info.FullMethodName)
-		// Combine both. We append New last so its rpc.method (fully qualified) wins if deduplicated.
+		// Combine both. We append New last so its rpc.method (fully qualified) wins when deduplicated.
 		attrs = append(append([]attribute.KeyValue{}, attrsOld...), attrsNew...)
 		attrs = append(attrs, semconv.RPCSystemNameGRPC) // New convention
 	default: // semconvModeNew

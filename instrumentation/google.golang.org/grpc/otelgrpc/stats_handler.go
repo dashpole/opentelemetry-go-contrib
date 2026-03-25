@@ -109,7 +109,6 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 	case semconvModeOld:
 		name, attrs = internal.ParseFullMethodOld(info.FullMethodName)
 	case semconvModeDup:
-
 		var attrsNew, attrsOld []attribute.KeyValue
 		name, attrsNew = internal.ParseFullMethod(info.FullMethodName)
 		_, attrsOld = internal.ParseFullMethodOld(info.FullMethodName)
@@ -236,7 +235,6 @@ func NewClientHandler(opts ...Option) stats.Handler {
 	return h
 }
 
-
 // TagRPC can attach some information to the given context.
 func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
 	var name string
@@ -246,11 +244,10 @@ func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 	case semconvModeOld:
 		name, attrs = internal.ParseFullMethodOld(info.FullMethodName)
 	case semconvModeDup:
-
 		var attrsNew, attrsOld []attribute.KeyValue
 		name, attrsNew = internal.ParseFullMethod(info.FullMethodName)
 		_, attrsOld = internal.ParseFullMethodOld(info.FullMethodName)
-		// Combine both. We append New last so its rpc.method (fully qualified) wins if deduplicated.
+		// Combine both. We append New last so its rpc.method (fully qualified) wins when deduplicated.
 		attrs = append(append([]attribute.KeyValue{}, attrsOld...), attrsNew...)
 		attrs = append(attrs, semconv.RPCSystemNameGRPC) // New convention
 	default: // semconvModeNew
@@ -288,7 +285,6 @@ func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 	return inject(context.WithValue(ctx, gRPCContextKey{}, &gctx), h.Propagators)
 }
 
-
 // HandleRPC processes the RPC stats.
 func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	var dur metric.Float64Histogram
@@ -305,7 +301,6 @@ func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 		},
 	)
 }
-
 
 // TagConn can attach some information to the given context.
 func (*clientHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
@@ -324,7 +319,6 @@ func (c *config) handleRPC(
 	oldDuration metric.Float64Histogram,
 	recordStatus func(*status.Status) (codes.Code, string),
 ) {
-
 	gctx, _ := ctx.Value(gRPCContextKey{}).(*gRPCContext)
 	if gctx != nil && !gctx.record {
 		return
@@ -388,7 +382,6 @@ func (c *config) handleRPC(
 		return
 	}
 }
-
 
 func canonicalString(code grpc_codes.Code) string {
 	switch code {

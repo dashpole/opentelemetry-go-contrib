@@ -8,10 +8,9 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
+	oldsemconv "go.opentelemetry.io/otel/semconv/v1.37.0" //nolint:depguard // Use of v1.37.0 is required for backward compatibility stability opt-in.
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
-	oldsemconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
-
 
 // ParseFullMethod returns a span name following the OpenTelemetry semantic
 // conventions as well as all applicable span attribute.KeyValue attributes based
@@ -34,7 +33,6 @@ func ParseFullMethod(fullMethod string) (string, []attribute.KeyValue) {
 // Based on the implementation in:
 // https://github.com/open-telemetry/opentelemetry-go-contrib/blob/v0.64.0/instrumentation/google.golang.org/grpc/otelgrpc/stats_handler.go#L111
 func ParseFullMethodOld(fullMethod string) (string, []attribute.KeyValue) {
-
 	if !strings.HasPrefix(fullMethod, "/") {
 		return fullMethod, nil
 	}
@@ -53,6 +51,3 @@ func ParseFullMethodOld(fullMethod string) (string, []attribute.KeyValue) {
 		oldsemconv.RPCMethodKey.String(method),
 	}
 }
-
-
-

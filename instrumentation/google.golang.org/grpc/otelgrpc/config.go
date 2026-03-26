@@ -87,14 +87,13 @@ func newConfig(opts []Option) *config {
 	return c
 }
 
-
 func parseSemconvMode() semconvMode {
 	val := os.Getenv("OTEL_SEMCONV_STABILITY_OPT_IN")
 	if val == "" {
 		return semconvModeNew
 	}
-	parts := strings.Split(val, ",")
-	for _, p := range parts {
+	parts := strings.SplitSeq(val, ",")
+	for p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "rpc/dup" {
 			return semconvModeDup
@@ -105,6 +104,7 @@ func parseSemconvMode() semconvMode {
 	}
 	return semconvModeNew
 }
+
 // WithPublicEndpoint configures the Handler to link the span with an incoming
 // span context. If this option is not provided, then the association is a child
 // association instead of a link.

@@ -12,12 +12,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	oldrpcconv "go.opentelemetry.io/otel/semconv/v1.37.0/rpcconv" //nolint:depguard // Use of v1.37.0 is required for backward compatibility stability opt-in.
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/semconv/v1.40.0/rpcconv"
-	oldrpcconv "go.opentelemetry.io/otel/semconv/v1.37.0/rpcconv"
 	"go.opentelemetry.io/otel/trace"
-
-
 
 	grpc_codes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -44,7 +42,6 @@ type serverHandler struct {
 }
 
 // NewServerHandler creates a stats.Handler for a gRPC server.
-
 func NewServerHandler(opts ...Option) stats.Handler {
 	c := newConfig(opts)
 	if c.SpanKind == trace.SpanKindUnspecified {
@@ -73,14 +70,6 @@ func NewServerHandler(opts ...Option) stats.Handler {
 			h.oldDuration = oldDur
 		}
 	}
-
-
-
-
-
-
-
-
 
 	if c.semconvMode == semconvModeNew || c.semconvMode == semconvModeDup {
 		h.duration, err = rpcconv.NewServerCallDuration(
@@ -114,7 +103,7 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 	var name string
 	var attrs []attribute.KeyValue
 
-	switch h.config.semconvMode {
+	switch h.semconvMode {
 	case semconvModeOld:
 		name, attrs = internal.ParseFullMethodOld(info.FullMethodName)
 	case semconvModeDup:
@@ -172,11 +161,11 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 // HandleRPC processes the RPC stats.
 func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	var dur metric.Float64Histogram
-	if h.config.semconvMode == semconvModeNew || h.config.semconvMode == semconvModeDup {
+	if h.semconvMode == semconvModeNew || h.semconvMode == semconvModeDup {
 		dur = h.duration.Inst()
 	}
 	var oldDur metric.Float64Histogram
-	if h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup {
+	if h.semconvMode == semconvModeOld || h.semconvMode == semconvModeDup {
 		oldDur = h.oldDuration.Inst()
 	}
 	h.handleRPC(
@@ -188,8 +177,6 @@ func (h *serverHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	)
 }
 
-
-
 type clientHandler struct {
 	*config
 
@@ -200,7 +187,6 @@ type clientHandler struct {
 }
 
 // NewClientHandler creates a stats.Handler for a gRPC client.
-
 func NewClientHandler(opts ...Option) stats.Handler {
 	c := newConfig(opts)
 	if c.SpanKind == trace.SpanKindUnspecified {
@@ -230,8 +216,6 @@ func NewClientHandler(opts ...Option) stats.Handler {
 		}
 	}
 
-
-
 	if c.semconvMode == semconvModeNew || c.semconvMode == semconvModeDup {
 		h.duration, err = rpcconv.NewClientCallDuration(
 			meter,
@@ -253,7 +237,7 @@ func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 	var name string
 	var attrs []attribute.KeyValue
 
-	switch h.config.semconvMode {
+	switch h.semconvMode {
 	case semconvModeOld:
 		name, attrs = internal.ParseFullMethodOld(info.FullMethodName)
 	case semconvModeDup:
@@ -301,11 +285,11 @@ func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 // HandleRPC processes the RPC stats.
 func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	var dur metric.Float64Histogram
-	if h.config.semconvMode == semconvModeNew || h.config.semconvMode == semconvModeDup {
+	if h.semconvMode == semconvModeNew || h.semconvMode == semconvModeDup {
 		dur = h.duration.Inst()
 	}
 	var oldDur metric.Float64Histogram
-	if h.config.semconvMode == semconvModeOld || h.config.semconvMode == semconvModeDup {
+	if h.semconvMode == semconvModeOld || h.semconvMode == semconvModeDup {
 		oldDur = h.oldDuration.Inst()
 	}
 	h.handleRPC(
@@ -319,8 +303,6 @@ func (h *clientHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	)
 }
 
-
-
 // TagConn can attach some information to the given context.
 func (*clientHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
 	return ctx
@@ -331,7 +313,7 @@ func (*clientHandler) HandleConn(context.Context, stats.ConnStats) {
 	// no-op
 }
 
-func (c *config) handleRPC(
+func (*config) handleRPC(
 	ctx context.Context,
 	rs stats.RPCStats,
 	duration metric.Float64Histogram,
@@ -397,7 +379,6 @@ func (c *config) handleRPC(
 		if oldDuration != nil {
 			oldDuration.Record(ctx, elapsedTime*1000.0, recordOpts...)
 		}
-
 
 	default:
 		return

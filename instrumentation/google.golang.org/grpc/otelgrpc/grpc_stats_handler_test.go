@@ -640,7 +640,7 @@ func TestClientHandlerTagRPC(t *testing.T) {
 	}
 }
 
-func TestServerHandlerStability(t *testing.T) {
+func TestSpansSemconvOptIn(t *testing.T) {
 	tests := []struct {
 		name           string
 		stabilityOptIn string
@@ -723,7 +723,7 @@ func TestServerHandlerStability(t *testing.T) {
 	}
 }
 
-func TestMetricsStability(t *testing.T) {
+func TestMetricsSemconvOptIn(t *testing.T) {
 	tests := []struct {
 		name           string
 		stabilityOptIn string

@@ -12,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	metric_x "go.opentelemetry.io/otel/metric/x"
 	"go.opentelemetry.io/otel/semconv/v1.40.0/goconv"
 
 	"go.opentelemetry.io/contrib/instrumentation/runtime/internal/deprecatedruntime"
@@ -22,17 +23,38 @@ import (
 const ScopeName = "go.opentelemetry.io/contrib/instrumentation/runtime"
 
 const (
-	goTotalMemory       = "/memory/classes/total:bytes"
-	goMemoryReleased    = "/memory/classes/heap/released:bytes"
-	goHeapMemory        = "/memory/classes/heap/stacks:bytes"
-	goMemoryLimit       = "/gc/gomemlimit:bytes"
-	goMemoryAllocated   = "/gc/heap/allocs:bytes"
-	goMemoryAllocations = "/gc/heap/allocs:objects"
-	goMemoryGoal        = "/gc/heap/goal:bytes"
-	goGoroutines        = "/sched/goroutines:goroutines"
-	goMaxProcs          = "/sched/gomaxprocs:threads"
-	goConfigGC          = "/gc/gogc:percent"
-	goSchedLatencies    = "/sched/latencies:seconds"
+	goTotalMemory               = "/memory/classes/total:bytes"
+	goMemoryReleased            = "/memory/classes/heap/released:bytes"
+	goHeapMemory                = "/memory/classes/heap/stacks:bytes"
+	goMemoryLimit               = "/gc/gomemlimit:bytes"
+	goMemoryAllocated           = "/gc/heap/allocs:bytes"
+	goMemoryAllocations         = "/gc/heap/allocs:objects"
+	goMemoryGoal                = "/gc/heap/goal:bytes"
+	goGoroutines                = "/sched/goroutines:goroutines"
+	goMaxProcs                  = "/sched/gomaxprocs:threads"
+	goConfigGC                  = "/gc/gogc:percent"
+	goSchedLatencies            = "/sched/latencies:seconds"
+	goMemoryGCCycles            = "/gc/cycles/total:gc-cycles"
+	goMemoryGCPauseDuration     = "/sched/pauses/total/gc:seconds"
+	goMemoryHeapFree            = "/memory/classes/heap/free:bytes"
+	goMemoryHeapObjects         = "/memory/classes/heap/objects:bytes"
+	goMemoryHeapUnused          = "/memory/classes/heap/unused:bytes"
+	goMemoryMetadataMCacheFree  = "/memory/classes/metadata/mcache/free:bytes"
+	goMemoryMetadataMCacheInuse = "/memory/classes/metadata/mcache/inuse:bytes"
+	goMemoryMetadataMSpanFree   = "/memory/classes/metadata/mspan/free:bytes"
+	goMemoryMetadataMSpanInuse  = "/memory/classes/metadata/mspan/inuse:bytes"
+	goMemoryMetadataOther       = "/memory/classes/metadata/other:bytes"
+	goMemoryOsStacks            = "/memory/classes/os-stacks:bytes"
+	goMemoryOther               = "/memory/classes/other:bytes"
+	goMemoryProfilingBuckets    = "/memory/classes/profiling/buckets:bytes"
+	goCPUUser                   = "/cpu/classes/user:cpu-seconds"
+	goCPUGCMarkAssist           = "/cpu/classes/gc/mark/assist:cpu-seconds"
+	goCPUGCMarkDedicated        = "/cpu/classes/gc/mark/dedicated:cpu-seconds"
+	goCPUGCMarkIdle             = "/cpu/classes/gc/mark/idle:cpu-seconds"
+	goCPUGCPause                = "/cpu/classes/gc/pause:cpu-seconds"
+	goCPUScavengeAssist         = "/cpu/classes/scavenge/assist:cpu-seconds"
+	goCPUScavengeBackground     = "/cpu/classes/scavenge/background:cpu-seconds"
+	goCPUIdle                   = "/cpu/classes/idle:cpu-seconds"
 )
 
 // Start initializes reporting of runtime metrics using the supplied config.
@@ -77,7 +99,12 @@ func Start(opts ...Option) error {
 			return err
 		}
 	}
-	memoryUsed, err := goconv.NewMemoryUsed(meter)
+	memoryUsed, err := meter.Int64ObservableUpDownCounter(
+		"go.memory.used",
+		metric.WithUnit("By"),
+		metric.WithDescription("Memory used by the Go runtime."),
+		metric_x.WithDefaultAttributes("go.memory.type"),
+	)
 	if err != nil {
 		return err
 	}
@@ -110,24 +137,84 @@ func Start(opts ...Option) error {
 		return err
 	}
 
-	otherMemoryOpt := metric.WithAttributeSet(
-		attribute.NewSet(memoryUsed.AttrMemoryType(goconv.MemoryTypeOther)),
-	)
-	stackMemoryOpt := metric.WithAttributeSet(
-		attribute.NewSet(memoryUsed.AttrMemoryType(goconv.MemoryTypeStack)),
-	)
+	optInMetrics := x.OptInMetrics()
+	enableGCCycles := optInMetrics["go.memory.gc.cycles"]
+	enableCPUTime := optInMetrics["go.cpu.time"]
+
+	var gcCycles metric.Int64ObservableCounter
+	if enableGCCycles {
+		gcCycles, err = meter.Int64ObservableCounter(
+			"go.memory.gc.cycles",
+			metric.WithUnit("{gc_cycle}"),
+			metric.WithDescription("Number of completed GC cycles."),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	var cpuTime metric.Float64ObservableCounter
+	if enableCPUTime {
+		cpuTime, err = meter.Float64ObservableCounter(
+			"go.cpu.time",
+			metric.WithUnit("s"),
+			metric.WithDescription("Estimated CPU time spent by the Go runtime."),
+			metric_x.WithDefaultAttributes("go.cpu.state"),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	memoryOpts := make(map[string]metric.MeasurementOption)
+	for goKey, info := range detailedMemoryClasses {
+		memoryOpts[goKey] = metric.WithAttributes(
+			attribute.String("go.memory.type", info.mType),
+			attribute.String("go.memory.detailed_type", info.key),
+		)
+	}
+
+	cpuOpts := make(map[string]metric.MeasurementOption)
+	for goKey, info := range cpuStateMapping {
+		cpuOpts[goKey] = metric.WithAttributes(
+			attribute.String("go.cpu.state", info.state),
+			attribute.String("go.cpu.detailed_state", info.detailedState),
+		)
+	}
+
 	collector := newCollector(c.MinimumReadMemStatsInterval, runtimeMetrics)
 	var lock sync.Mutex
+	instruments := []metric.Observable{
+		memoryUsed,
+		memoryLimit.Inst(),
+		memoryAllocated.Inst(),
+		memoryAllocations.Inst(),
+		memoryGCGoal.Inst(),
+		goroutineCount.Inst(),
+		processorLimit.Inst(),
+		configGogc.Inst(),
+	}
+	if enableGCCycles {
+		instruments = append(instruments, gcCycles)
+	}
+	if enableCPUTime {
+		instruments = append(instruments, cpuTime)
+	}
+
 	_, err = meter.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
 			lock.Lock()
 			defer lock.Unlock()
 			collector.refresh()
-			stackMemory := collector.getInt(goHeapMemory)
-			o.ObserveInt64(memoryUsed.Inst(), stackMemory, stackMemoryOpt)
-			totalMemory := collector.getInt(goTotalMemory) - collector.getInt(goMemoryReleased)
-			otherMemory := totalMemory - stackMemory
-			o.ObserveInt64(memoryUsed.Inst(), otherMemory, otherMemoryOpt)
+			for goKey, opt := range memoryOpts {
+				o.ObserveInt64(memoryUsed, collector.getInt(goKey), opt)
+			}
+
+			if enableCPUTime {
+				for goKey, opt := range cpuOpts {
+					o.ObserveFloat64(cpuTime, collector.getFloat(goKey), opt)
+				}
+			}
 			// Only observe the limit metric if a limit exists
 			if limit := collector.getInt(goMemoryLimit); limit != math.MaxInt64 {
 				o.ObserveInt64(memoryLimit.Inst(), limit)
@@ -138,16 +225,12 @@ func Start(opts ...Option) error {
 			o.ObserveInt64(goroutineCount.Inst(), collector.getInt(goGoroutines))
 			o.ObserveInt64(processorLimit.Inst(), collector.getInt(goMaxProcs))
 			o.ObserveInt64(configGogc.Inst(), collector.getInt(goConfigGC))
+			if enableGCCycles {
+				o.ObserveInt64(gcCycles, collector.getInt(goMemoryGCCycles))
+			}
 			return nil
 		},
-		memoryUsed.Inst(),
-		memoryLimit.Inst(),
-		memoryAllocated.Inst(),
-		memoryAllocations.Inst(),
-		memoryGCGoal.Inst(),
-		goroutineCount.Inst(),
-		processorLimit.Inst(),
-		configGogc.Inst(),
+		instruments...,
 	)
 	if err != nil {
 		return err
@@ -167,6 +250,58 @@ var runtimeMetrics = []string{
 	goGoroutines,
 	goMaxProcs,
 	goConfigGC,
+	goMemoryGCCycles,
+	goMemoryHeapFree,
+	goMemoryHeapObjects,
+	goMemoryHeapUnused,
+	goMemoryMetadataMCacheFree,
+	goMemoryMetadataMCacheInuse,
+	goMemoryMetadataMSpanFree,
+	goMemoryMetadataMSpanInuse,
+	goMemoryMetadataOther,
+	goMemoryOsStacks,
+	goMemoryOther,
+	goMemoryProfilingBuckets,
+	goCPUUser,
+	goCPUGCMarkAssist,
+	goCPUGCMarkDedicated,
+	goCPUGCMarkIdle,
+	goCPUGCPause,
+	goCPUScavengeAssist,
+	goCPUScavengeBackground,
+	goCPUIdle,
+}
+
+var detailedMemoryClasses = map[string]struct {
+	key   string
+	mType string
+}{
+	goMemoryHeapFree:            {"heap/free", "other"},
+	goMemoryHeapObjects:         {"heap/objects", "other"},
+	goMemoryHeapUnused:          {"heap/unused", "other"},
+	goMemoryMetadataMCacheFree:  {"metadata/mcache/free", "other"},
+	goMemoryMetadataMCacheInuse: {"metadata/mcache/inuse", "other"},
+	goMemoryMetadataMSpanFree:   {"metadata/mspan/free", "other"},
+	goMemoryMetadataMSpanInuse:  {"metadata/mspan/inuse", "other"},
+	goMemoryMetadataOther:       {"metadata/other", "other"},
+	goMemoryOsStacks:            {"os-stacks", "other"},
+	goMemoryOther:               {"other", "other"},
+	goMemoryProfilingBuckets:    {"profiling/buckets", "other"},
+	goHeapMemory:                {"heap/stacks", "stack"},
+}
+
+var cpuStateMapping = map[string]struct {
+	state         string
+	detailedState string
+}{
+	goCPUUser:               {"user", "user"},
+	goCPUGCMarkAssist:       {"gc", "gc/mark/assist"},
+	goCPUGCMarkDedicated:    {"gc", "gc/mark/dedicated"},
+	goCPUGCMarkIdle:         {"gc", "gc/mark/idle"},
+	goCPUGCPause:            {"gc", "gc/pause"},
+	goCPUScavengeAssist:     {"scavenge", "scavenge/assist"},
+	goCPUScavengeBackground: {"scavenge", "scavenge/background"},
+	goCPUIdle:               {"idle", "idle"},
 }
 
 type goCollector struct {
@@ -226,4 +361,11 @@ func (g *goCollector) getHistogram(name string) *metrics.Float64Histogram {
 		return s.Value.Float64Histogram()
 	}
 	return nil
+}
+
+func (g *goCollector) getFloat(name string) float64 {
+	if s, ok := g.sampleMap[name]; ok && s.Value.Kind() == metrics.KindFloat64 {
+		return s.Value.Float64()
+	}
+	return 0
 }

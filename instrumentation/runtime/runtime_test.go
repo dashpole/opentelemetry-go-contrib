@@ -194,3 +194,139 @@ func assertNonZeroValues(t *testing.T, sm metricdata.ScopeMetrics) {
 func allocateMemory(buffer [][]byte) [][]byte {
 	return append(buffer, make([]byte, 1000000))
 }
+
+func TestRuntimeOptInMetrics(t *testing.T) {
+	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.memory.gc.cycles")
+
+	reader := metric.NewManualReader()
+	mp := metric.NewMeterProvider(metric.WithReader(reader))
+	err := Start(WithMeterProvider(mp))
+	assert.NoError(t, err)
+	rm := metricdata.ResourceMetrics{}
+	err = reader.Collect(t.Context(), &rm)
+	assert.NoError(t, err)
+	require.Len(t, rm.ScopeMetrics, 1)
+
+	// We expect 7 default metrics (no limit set) + 1 opt-in metric = 8 metrics.
+	require.Len(t, rm.ScopeMetrics[0].Metrics, 8)
+
+	found := false
+	for _, m := range rm.ScopeMetrics[0].Metrics {
+		if m.Name == "go.memory.gc.cycles" {
+			found = true
+			assert.Equal(t, "{gc_cycle}", m.Unit)
+			assert.Equal(t, "Number of completed GC cycles.", m.Description)
+			break
+		}
+	}
+	assert.True(t, found, "go.memory.gc.cycles metric not found")
+}
+
+func TestRuntimeDetailedMemoryAttributes(t *testing.T) {
+	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.memory.detailed_type")
+
+	reader := metric.NewManualReader()
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		metric.WithView(metric.NewView(
+			metric.Instrument{Name: "go.memory.used"},
+			metric.Stream{AttributeFilter: func(_ attribute.KeyValue) bool { return true }},
+		)),
+	)
+	err := Start(WithMeterProvider(mp))
+	assert.NoError(t, err)
+	rm := metricdata.ResourceMetrics{}
+	err = reader.Collect(t.Context(), &rm)
+	assert.NoError(t, err)
+	require.Len(t, rm.ScopeMetrics, 1)
+
+	found := false
+	for _, m := range rm.ScopeMetrics[0].Metrics {
+		if m.Name != "go.memory.used" {
+			continue
+		}
+		found = true
+		sum, ok := m.Data.(metricdata.Sum[int64])
+		require.True(t, ok, "expected sum data type")
+
+		// We expect 12 detailed points defined in detailedMemoryClasses.
+		assert.Len(t, sum.DataPoints, 12)
+
+		detailedFound := 0
+		for _, dp := range sum.DataPoints {
+			v, ok := dp.Attributes.Value("go.memory.detailed_type")
+			if ok {
+				detailedFound++
+				assert.NotEmpty(t, v.AsString())
+			}
+		}
+		assert.Equal(t, 12, detailedFound, "expected 12 detailed data points")
+		break
+	}
+	assert.True(t, found, "go.memory.used metric not found")
+}
+
+func TestRuntimeCPUMetrics(t *testing.T) {
+	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.cpu.time")
+
+	reader := metric.NewManualReader()
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		metric.WithView(metric.NewView(
+			metric.Instrument{Name: "go.cpu.time"},
+			metric.Stream{AttributeFilter: func(_ attribute.KeyValue) bool { return true }},
+		)),
+	)
+	err := Start(WithMeterProvider(mp))
+	assert.NoError(t, err)
+	rm := metricdata.ResourceMetrics{}
+	err = reader.Collect(t.Context(), &rm)
+	assert.NoError(t, err)
+	require.Len(t, rm.ScopeMetrics, 1)
+
+	found := false
+	for _, m := range rm.ScopeMetrics[0].Metrics {
+		if m.Name != "go.cpu.time" {
+			continue
+		}
+		found = true
+		assert.Equal(t, "s", m.Unit)
+		assert.Equal(t, "Estimated CPU time spent by the Go runtime.", m.Description)
+
+		sum, ok := m.Data.(metricdata.Sum[float64])
+		require.True(t, ok, "expected sum data type")
+
+		// We expect 8 data points for 8 detailed states.
+		assert.Len(t, sum.DataPoints, 8)
+
+		expected := map[string]string{
+			"user":                "user",
+			"gc/mark/assist":      "gc",
+			"gc/mark/dedicated":   "gc",
+			"gc/mark/idle":        "gc",
+			"gc/pause":            "gc",
+			"scavenge/assist":     "scavenge",
+			"scavenge/background": "scavenge",
+			"idle":                "idle",
+		}
+
+		foundDetailed := 0
+		for _, dp := range sum.DataPoints {
+			detailedVal, ok := dp.Attributes.Value("go.cpu.detailed_state")
+			require.True(t, ok, "expected go.cpu.detailed_state attribute")
+			detailedStr := detailedVal.AsString()
+
+			coarseVal, ok := dp.Attributes.Value("go.cpu.state")
+			require.True(t, ok, "expected go.cpu.state attribute")
+			coarseStr := coarseVal.AsString()
+
+			expectedCoarse, ok := expected[detailedStr]
+			require.True(t, ok, "unexpected detailed state: "+detailedStr)
+			assert.Equal(t, expectedCoarse, coarseStr, "coarse state mismatch for detailed state: "+detailedStr)
+			foundDetailed++
+		}
+		assert.Equal(t, 8, foundDetailed, "expected to find 8 detailed states")
+		break
+	}
+	assert.True(t, found, "go.cpu.time metric not found")
+}

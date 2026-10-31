@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
+	sdkmetricx "go.opentelemetry.io/otel/sdk/metric/x"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/semconv/v1.43.0/goconv"
 )
@@ -181,12 +182,14 @@ func TestRuntimeWithLimit(t *testing.T) {
 	assertNonZeroValues(t, rm.ScopeMetrics[0])
 }
 
-func TestRuntimeOptInMetrics(t *testing.T) {
-	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.memory.gc.cycles, go.cpu.time")
+func TestRuntimeDevelopmentMetrics(t *testing.T) {
 	goruntime.GC()
 
 	reader := metric.NewManualReader()
-	mp := metric.NewMeterProvider(metric.WithReader(reader))
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	err := Start(WithMeterProvider(mp))
 	assert.NoError(t, err)
 	rm := metricdata.ResourceMetrics{}
@@ -236,6 +239,31 @@ func TestRuntimeOptInMetrics(t *testing.T) {
 		totalCPUTime += dp.Value
 	}
 	assert.Positive(t, totalCPUTime)
+}
+
+func TestRuntimeSelectiveDevelopmentMetricViaView(t *testing.T) {
+	goruntime.GC()
+
+	reader := metric.NewManualReader()
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		sdkmetricx.WithView(sdkmetricx.NewView(
+			metric.Instrument{Name: goconv.MemoryGCCyclesObservable{}.Name()},
+			sdkmetricx.Stream{Enabled: new(true)},
+		)),
+	)
+	require.NoError(t, Start(WithMeterProvider(mp)))
+	rm := metricdata.ResourceMetrics{}
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+	require.Len(t, rm.ScopeMetrics, 1)
+
+	metrics := map[string]metricdata.Metrics{}
+	for _, m := range rm.ScopeMetrics[0].Metrics {
+		metrics[m.Name] = m
+	}
+
+	assert.Contains(t, metrics, goconv.MemoryGCCyclesObservable{}.Name())
+	assert.NotContains(t, metrics, goconv.CPUTimeObservable{}.Name())
 }
 
 func TestRuntimeIgnoresProducerOptInMetrics(t *testing.T) {
@@ -342,16 +370,18 @@ func TestRuntimeDetailedMemoryAttributes(t *testing.T) {
 }
 
 func TestRuntimeDetailedCPUAttributes(t *testing.T) {
-	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.cpu.time")
 	goruntime.GC()
 
 	cpuTime := goconv.CPUTimeObservable{}
 	reader := metric.NewManualReader()
 	mp := metric.NewMeterProvider(
 		metric.WithReader(reader),
-		metric.WithView(metric.NewView(
+		sdkmetricx.WithView(sdkmetricx.NewView(
 			metric.Instrument{Name: cpuTime.Name()},
-			metric.Stream{AttributeFilter: func(_ attribute.KeyValue) bool { return true }},
+			sdkmetricx.Stream{
+				Enabled:         new(true),
+				AttributeFilter: func(_ attribute.KeyValue) bool { return true },
+			},
 		)),
 	)
 	err := Start(WithMeterProvider(mp))

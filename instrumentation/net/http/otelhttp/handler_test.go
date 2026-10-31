@@ -23,6 +23,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
+	sdkmetricx "go.opentelemetry.io/otel/sdk/metric/x"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -143,7 +144,10 @@ func TestHandlerBasics(t *testing.T) {
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
 
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	h := NewHandler(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +219,10 @@ func TestHandlerResponseBodySizeReadFrom(t *testing.T) {
 	bodysize := int64(len(body))
 
 	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	h := NewHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// NewHandler passes a httpsnoop-wrapped writer here.
 		// Without the ReadFrom hook, this call bypasses byte accounting.
@@ -820,7 +827,10 @@ func TestHandlerWithMetricAttributesFn(t *testing.T) {
 
 	for _, tc := range testCases {
 		reader := sdkmetric.NewManualReader()
-		meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		meterProvider := sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(reader),
+			sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+		)
 
 		h := NewHandler(
 			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -863,7 +873,10 @@ func TestHandlerServeMuxRouteMetric(t *testing.T) {
 	t.Setenv("OTEL_METRICS_EXEMPLAR_FILTER", "always_off")
 
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	spanRecorder := tracetest.NewSpanRecorder()
 	tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
 
@@ -1072,6 +1085,77 @@ func BenchmarkHandlerServeHTTP(b *testing.B) {
 			for range b.N {
 				bb.handler.ServeHTTP(rr, r)
 			}
+		})
+	}
+}
+
+func TestHandlerMetricStability(t *testing.T) {
+	t.Setenv("OTEL_METRICS_EXEMPLAR_FILTER", "always_off")
+
+	tests := []struct {
+		name        string
+		mpOpts      []sdkmetric.Option
+		wantMetrics []string
+	}{
+		{
+			name:        "default stability emits only stable duration metric",
+			wantMetrics: []string{"http.server.request.duration"},
+		},
+		{
+			name: "development minimum stability enables development body size metrics",
+			mpOpts: []sdkmetric.Option{
+				sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+			},
+			wantMetrics: []string{
+				"http.server.request.body.size",
+				"http.server.response.body.size",
+				"http.server.request.duration",
+			},
+		},
+		{
+			name: "view selectively enables development metric under default stability",
+			mpOpts: []sdkmetric.Option{
+				sdkmetricx.WithView(sdkmetricx.NewView(
+					sdkmetric.Instrument{Name: "http.server.request.body.size"},
+					sdkmetricx.Stream{Enabled: new(true)},
+				)),
+			},
+			wantMetrics: []string{
+				"http.server.request.body.size",
+				"http.server.request.duration",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := sdkmetric.NewManualReader()
+			opts := append([]sdkmetric.Option{sdkmetric.WithReader(reader)}, tt.mpOpts...)
+			mp := sdkmetric.NewMeterProvider(opts...)
+
+			h := NewHandler(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_, _ = io.Copy(io.Discard, r.Body)
+					_, _ = io.WriteString(w, "hello")
+				}),
+				"test_handler",
+				WithMeterProvider(mp),
+			)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/test", strings.NewReader("payload"))
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			require.Equal(t, http.StatusOK, rr.Result().StatusCode)
+
+			var rm metricdata.ResourceMetrics
+			require.NoError(t, reader.Collect(t.Context(), &rm))
+			require.Len(t, rm.ScopeMetrics, 1)
+
+			var gotNames []string
+			for _, m := range rm.ScopeMetrics[0].Metrics {
+				gotNames = append(gotNames, m.Name)
+			}
+			assert.ElementsMatch(t, tt.wantMetrics, gotNames)
 		})
 	}
 }

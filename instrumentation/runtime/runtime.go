@@ -68,8 +68,9 @@ const (
 //	go.processor.limit      {thread}      The number of OS threads that can execute user-level Go code simultaneously.
 //	go.config.gogc          %             Heap size target percentage configured by the user, otherwise 100.
 //
-// The following opt-in metrics are produced when listed, comma-separated, in
-// the OTEL_GO_X_RUNTIME_METRICS_OPTIN environment variable:
+// The following development metrics are registered with StabilityDevelopment
+// and produced when the MeterProvider is configured with
+// WithMinimumStability(StabilityDevelopment) or enabled via a View:
 //
 //	go.memory.gc.cycles     {gc_cycle}    Number of completed GC cycles.
 //	go.cpu.time             s             Estimated CPU time spent by the Go runtime.
@@ -115,8 +116,24 @@ func Start(opts ...Option) error {
 	if err != nil {
 		return err
 	}
+	gcCycles, err := goconv.NewMemoryGCCyclesObservable(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
+	if err != nil {
+		return err
+	}
+	cpuTime, err := goconv.NewCPUTimeObservable(
+		meter,
+		metricx.WithDefaultAttributes((goconv.CPUTimeObservable{}).AttrCPUState("").Key),
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
+	if err != nil {
+		return err
+	}
 
 	memoryClasses := newMemoryClasses(memoryUsed)
+	cpuStates := newCPUStates(cpuTime)
 	instruments := []metric.Observable{
 		memoryUsed.Inst(),
 		memoryLimit.Inst(),
@@ -126,36 +143,12 @@ func Start(opts ...Option) error {
 		goroutineCount.Inst(),
 		processorLimit.Inst(),
 		configGogc.Inst(),
+		gcCycles.Inst(),
+		cpuTime.Inst(),
 	}
-	metricNames := slices.Clone(runtimeMetrics)
-
-	enableGCCycles := optInGCCycles.enabled()
-	var gcCycles goconv.MemoryGCCyclesObservable
-	if enableGCCycles {
-		gcCycles, err = goconv.NewMemoryGCCyclesObservable(meter)
-		if err != nil {
-			return err
-		}
-		instruments = append(instruments, gcCycles.Inst())
-		metricNames = append(metricNames, goGCCycles)
-	}
-
-	enableCPUTime := optInCPUTime.enabled()
-	var cpuTime goconv.CPUTimeObservable
-	var cpuStates []cpuState
-	if enableCPUTime {
-		cpuTime, err = goconv.NewCPUTimeObservable(
-			meter,
-			metricx.WithDefaultAttributes((goconv.CPUTimeObservable{}).AttrCPUState("").Key),
-		)
-		if err != nil {
-			return err
-		}
-		cpuStates = newCPUStates(cpuTime)
-		instruments = append(instruments, cpuTime.Inst())
-		for _, state := range cpuStates {
-			metricNames = append(metricNames, state.runtimeMetric)
-		}
+	metricNames := append(slices.Clone(runtimeMetrics), goGCCycles)
+	for _, state := range cpuStates {
+		metricNames = append(metricNames, state.runtimeMetric)
 	}
 
 	collector := newCollector(c.MinimumRefreshInterval, metricNames)
@@ -178,9 +171,7 @@ func Start(opts ...Option) error {
 			o.ObserveInt64(goroutineCount.Inst(), collector.getInt(goGoroutines))
 			o.ObserveInt64(processorLimit.Inst(), collector.getInt(goMaxProcs))
 			o.ObserveInt64(configGogc.Inst(), collector.getInt(goConfigGC))
-			if enableGCCycles {
-				o.ObserveInt64(gcCycles.Inst(), collector.getInt(goGCCycles))
-			}
+			o.ObserveInt64(gcCycles.Inst(), collector.getInt(goGCCycles))
 			for _, state := range cpuStates {
 				o.ObserveFloat64(cpuTime.Inst(), collector.getFloat(state.runtimeMetric), state.attributes)
 			}

@@ -30,11 +30,7 @@ type optInMetric struct {
 	name string
 }
 
-var (
-	optInGCCycles = optInMetric{name: goconv.MemoryGCCyclesObservable{}.Name()}
-	optInCPUTime  = optInMetric{name: goconv.CPUTimeObservable{}.Name()}
-	optInGCPauses = optInMetric{name: goconv.MemoryGCPauseDuration{}.Name()}
-)
+var optInGCPauses = optInMetric{name: goconv.MemoryGCPauseDuration{}.Name()}
 
 func (m optInMetric) enabled() bool { return x.OptInMetrics.Enabled(m.name) }
 

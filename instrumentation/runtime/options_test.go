@@ -92,12 +92,10 @@ func TestNewProducerConfig(t *testing.T) {
 }
 
 func TestOptInMetricEnabled(t *testing.T) {
-	assert.False(t, optInGCCycles.enabled())
-	assert.False(t, optInCPUTime.enabled())
+	assert.False(t, optInGCPauses.enabled())
 
-	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.cpu.time")
-	assert.False(t, optInGCCycles.enabled())
-	assert.True(t, optInCPUTime.enabled())
+	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.memory.gc.pause.duration")
+	assert.True(t, optInGCPauses.enabled())
 }
 
 func configEqual(a, b config) bool {

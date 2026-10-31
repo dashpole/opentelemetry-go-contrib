@@ -23,6 +23,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
+	sdkmetricx "go.opentelemetry.io/otel/sdk/metric/x"
 
 	"{{.pkg}}/internal/semconv"
 )
@@ -161,8 +162,18 @@ func TestNewServerRecordMetrics(t *testing.T) {
 		},
 	}...)
 
+	expectedStableScopeMetric := metricdata.ScopeMetrics{
+		Scope: instrumentation.Scope{
+			Name: "test",
+		},
+		Metrics: []metricdata.Metrics{
+			expectedCurrentScopeMetric.Metrics[2],
+		},
+	}
+
 	tests := []struct {
 		name       string
+		mpOpts     []sdkmetric.Option
 		serverFunc func(metric.MeterProvider) semconv.HTTPServer
 		wantFunc   func(t *testing.T, rm metricdata.ResourceMetrics)
 	}{
@@ -176,7 +187,19 @@ func TestNewServerRecordMetrics(t *testing.T) {
 			},
 		},
 		{
-			name: "With Meter",
+			name: "With Meter (Default Stable)",
+			serverFunc: func(mp metric.MeterProvider) semconv.HTTPServer {
+				return semconv.NewHTTPServer(mp.Meter("test"))
+			},
+			wantFunc: func(t *testing.T, rm metricdata.ResourceMetrics) {
+				require.Len(t, rm.ScopeMetrics, 1)
+				require.Len(t, rm.ScopeMetrics[0].Metrics, 1)
+				metricdatatest.AssertEqual(t, expectedStableScopeMetric, rm.ScopeMetrics[0], metricdatatest.IgnoreTimestamp(), metricdatatest.IgnoreValue())
+			},
+		},
+		{
+			name:   "With Meter (Development Stability)",
+			mpOpts: []sdkmetric.Option{sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment)},
 			serverFunc: func(mp metric.MeterProvider) semconv.HTTPServer {
 				return semconv.NewHTTPServer(mp.Meter("test"))
 			},
@@ -193,7 +216,8 @@ func TestNewServerRecordMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := sdkmetric.NewManualReader()
-			mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+			opts := append([]sdkmetric.Option{sdkmetric.WithReader(reader)}, tt.mpOpts...)
+			mp := sdkmetric.NewMeterProvider(opts...)
 
 			server := tt.serverFunc(mp)
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://example.com", http.NoBody)
@@ -541,8 +565,18 @@ func TestNewClientRecordMetrics(t *testing.T) {
 		},
 	}
 
+	expectedStableScopeMetric := metricdata.ScopeMetrics{
+		Scope: instrumentation.Scope{
+			Name: "test",
+		},
+		Metrics: []metricdata.Metrics{
+			expectedCurrentScopeMetric.Metrics[1],
+		},
+	}
+
 	tests := []struct {
 		name       string
+		mpOpts     []sdkmetric.Option
 		clientFunc func(metric.MeterProvider) semconv.HTTPClient
 		wantFunc   func(t *testing.T, rm metricdata.ResourceMetrics)
 	}{
@@ -556,7 +590,19 @@ func TestNewClientRecordMetrics(t *testing.T) {
 			},
 		},
 		{
-			name: "With Meter",
+			name: "With Meter (Default Stable)",
+			clientFunc: func(mp metric.MeterProvider) semconv.HTTPClient {
+				return semconv.NewHTTPClient(mp.Meter("test"))
+			},
+			wantFunc: func(t *testing.T, rm metricdata.ResourceMetrics) {
+				require.Len(t, rm.ScopeMetrics, 1)
+				require.Len(t, rm.ScopeMetrics[0].Metrics, 1)
+				metricdatatest.AssertEqual(t, expectedStableScopeMetric, rm.ScopeMetrics[0], metricdatatest.IgnoreTimestamp(), metricdatatest.IgnoreValue())
+			},
+		},
+		{
+			name:   "With Meter (Development Stability)",
+			mpOpts: []sdkmetric.Option{sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment)},
 			clientFunc: func(mp metric.MeterProvider) semconv.HTTPClient {
 				return semconv.NewHTTPClient(mp.Meter("test"))
 			},
@@ -572,7 +618,8 @@ func TestNewClientRecordMetrics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			reader := sdkmetric.NewManualReader()
-			mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+			opts := append([]sdkmetric.Option{sdkmetric.WithReader(reader)}, tt.mpOpts...)
+			mp := sdkmetric.NewMeterProvider(opts...)
 
 			client := tt.clientFunc(mp)
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://example.com", http.NoBody)

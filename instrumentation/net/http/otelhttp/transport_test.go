@@ -30,6 +30,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
+	sdkmetricx "go.opentelemetry.io/otel/sdk/metric/x"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
@@ -929,7 +930,10 @@ func TestTransportMetrics(t *testing.T) {
 
 	t.Run("make http request and read entire response at once", func(t *testing.T) {
 		reader := sdkmetric.NewManualReader()
-		meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		meterProvider := sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(reader),
+			sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+		)
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -987,7 +991,10 @@ func TestTransportMetrics(t *testing.T) {
 
 	t.Run("make http request and buffer response", func(t *testing.T) {
 		reader := sdkmetric.NewManualReader()
-		meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		meterProvider := sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(reader),
+			sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+		)
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -1055,7 +1062,10 @@ func TestTransportMetrics(t *testing.T) {
 
 	t.Run("make http request and close body before reading completely", func(t *testing.T) {
 		reader := sdkmetric.NewManualReader()
-		meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+		meterProvider := sdkmetric.NewMeterProvider(
+			sdkmetric.WithReader(reader),
+			sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+		)
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -1119,7 +1129,10 @@ func TestTransportMetrics(t *testing.T) {
 
 func TestTransportMetricsReportFinalRequestBodySize(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -1196,7 +1209,10 @@ func TestTransportMetricsReportFinalRequestBodySize(t *testing.T) {
 
 func TestTransportMetricsReportFinalRequestBodySizeUnknownLength(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -1273,7 +1289,10 @@ func TestTransportMetricsReportFinalRequestBodySizeUnknownLength(t *testing.T) {
 
 func TestTransportMetricsRecordedBeforeResponseBodyFinalized(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	release := make(chan struct{})
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -1324,7 +1343,10 @@ func (tr *errAsyncBodyCloseTransport) RoundTrip(r *http.Request) (*http.Response
 
 func TestTransportErrorReportsFinalRequestBodySize(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	body := newSlowRequestBody(16*1024, time.Millisecond)
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "http://localhost", body)
@@ -1383,7 +1405,10 @@ func (tr *overDeclaredBodyTransport) RoundTrip(r *http.Request) (*http.Response,
 
 func TestTransportMetricsReportActualSizeOverDeclaredContentLength(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	// The body yields more bytes than the declared ContentLength, so a read
 	// count reaching the declared length is not proof of completion; only
@@ -1457,7 +1482,10 @@ func (asyncBlockedCloseTransport) RoundTrip(r *http.Request) (*http.Response, er
 
 func TestTransportMetricsRecordedWhenRequestBodyCloseBlocks(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	payload := strings.Repeat("a", 8*1024)
 	body := &blockingCloseBody{
@@ -1511,7 +1539,10 @@ func (tr bodyReplayingTransport) RoundTrip(r *http.Request) (*http.Response, err
 
 func TestTransportMetricsRecordedWhenRequestBodyDrainedWithoutClose(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
@@ -1553,7 +1584,10 @@ func TestTransportMetricsRecordedWhenRequestBodyDrainedWithoutClose(t *testing.T
 
 func TestTransportFilterPassThrough(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1644,7 +1678,10 @@ func TestTransportNetworkProtocolVersionFromResponse(t *testing.T) {
 	tracerProvider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spanRecorder))
 
 	reader := sdkmetric.NewManualReader()
-	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	meterProvider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1752,7 +1789,10 @@ func TestCustomAttributesHandling(t *testing.T) {
 	)
 	ctx := t.Context()
 	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	defer func() {
 		err := provider.Shutdown(ctx)
 		if err != nil {
@@ -1813,7 +1853,10 @@ func TestMetricsExistenceOnRequestError(t *testing.T) {
 
 	ctx := t.Context()
 	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	defer func() {
 		err := provider.Shutdown(ctx)
 		assert.NoError(t, err)
@@ -1853,7 +1896,10 @@ func TestDefaultAttributesHandling(t *testing.T) {
 	)
 	ctx := t.Context()
 	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	defer func() {
 		err := provider.Shutdown(ctx)
 		if err != nil {
@@ -2060,7 +2106,10 @@ func TestHandleErrorOnGetBodyError(t *testing.T) {
 func TestTransportErrorTypeMetricAttribute(t *testing.T) {
 	ctx := t.Context()
 	reader := sdkmetric.NewManualReader()
-	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	defer func() {
 		assert.NoError(t, provider.Shutdown(ctx))
 	}()
@@ -2110,5 +2159,77 @@ func TestTransportErrorTypeMetricAttribute(t *testing.T) {
 		// specific named type is recorded rather than the generic "_OTHER" fallback.
 		assert.NotEmpty(t, errorTypeVal.AsString())
 		assert.NotEqual(t, "_OTHER", errorTypeVal.AsString())
+	}
+}
+
+func TestTransportMetricStability(t *testing.T) {
+	t.Setenv("OTEL_METRICS_EXEMPLAR_FILTER", "always_off")
+
+	tests := []struct {
+		name        string
+		mpOpts      []sdkmetric.Option
+		wantMetrics []string
+	}{
+		{
+			name:        "default stability emits only stable duration metric",
+			wantMetrics: []string{"http.client.request.duration"},
+		},
+		{
+			name: "development minimum stability enables development body size metric",
+			mpOpts: []sdkmetric.Option{
+				sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+			},
+			wantMetrics: []string{
+				"http.client.request.body.size",
+				"http.client.request.duration",
+			},
+		},
+		{
+			name: "view selectively enables development metric under default stability",
+			mpOpts: []sdkmetric.Option{
+				sdkmetricx.WithView(sdkmetricx.NewView(
+					sdkmetric.Instrument{Name: "http.client.request.body.size"},
+					sdkmetricx.Stream{Enabled: new(true)},
+				)),
+			},
+			wantMetrics: []string{
+				"http.client.request.body.size",
+				"http.client.request.duration",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := sdkmetric.NewManualReader()
+			opts := append([]sdkmetric.Option{sdkmetric.WithReader(reader)}, tt.mpOpts...)
+			mp := sdkmetric.NewMeterProvider(opts...)
+
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer ts.Close()
+
+			client := http.Client{
+				Transport: NewTransport(http.DefaultTransport, WithMeterProvider(mp)),
+			}
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, ts.URL, strings.NewReader("payload"))
+			require.NoError(t, err)
+			resp, err := client.Do(req)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+
+			var rm metricdata.ResourceMetrics
+			require.NoError(t, reader.Collect(t.Context(), &rm))
+			require.Len(t, rm.ScopeMetrics, 1)
+
+			var gotNames []string
+			for _, m := range rm.ScopeMetrics[0].Metrics {
+				gotNames = append(gotNames, m.Name)
+			}
+			assert.ElementsMatch(t, tt.wantMetrics, gotNames)
+		})
 	}
 }

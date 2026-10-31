@@ -37,6 +37,11 @@ var _ metric.Producer = (*Producer)(nil)
 
 // NewProducer creates a Producer which provides precomputed histogram metrics from the go runtime.
 //
+// The metrics emitted by the Producer are Development metrics in the Go runtime
+// semantic conventions. Because a Producer does not use the metrics API, they
+// are not subject to the MeterProvider's minimum stability; registering the
+// Producer opts in to them.
+//
 // Metrics emitted by NewProducer include:
 //
 //	go.schedule.duration    s             The time goroutines have spent in the scheduler in a runnable state before actually running.

@@ -150,8 +150,9 @@ const (
 //   - WriteEvents: Record a "write" span event after every http.ResponseWriter.Write.
 //
 // The events do not include per-call byte-count attributes. Total request and
-// response body sizes are recorded on the span according to HTTP semantic
-// conventions.
+// response body sizes are recorded on the span as the Development
+// http.request.body.size and http.response.body.size attributes when the
+// Tracer reports them as enabled.
 func WithMessageEvents(events ...Event) Option {
 	return optionFunc(func(c *config) {
 		for _, e := range events {

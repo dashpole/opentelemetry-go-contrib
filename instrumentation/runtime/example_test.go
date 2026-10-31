@@ -10,6 +10,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/metric"
+	metricx "go.opentelemetry.io/otel/sdk/metric/x"
 
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 )
@@ -22,7 +23,11 @@ func Example() {
 		// Add the runtime producer to get histograms from the Go runtime.
 		metric.WithProducer(runtime.NewProducer()),
 	)
-	provider := metric.NewMeterProvider(metric.WithReader(reader))
+	provider := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		// The runtime metrics are Development metrics.
+		metricx.WithMinimumStability(metricx.StabilityDevelopment),
+	)
 	defer func() {
 		err := provider.Shutdown(context.Background())
 		if err != nil {

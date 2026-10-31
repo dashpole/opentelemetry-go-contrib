@@ -7,9 +7,26 @@ require (
 	github.com/stretchr/testify v1.12.1
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/metric v1.47.0
+	go.opentelemetry.io/otel/metric/x v0.69.0
 	go.opentelemetry.io/otel/sdk v1.47.0
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
+	go.opentelemetry.io/otel/sdk/metric/x v0.69.0
+	go.opentelemetry.io/otel/sdk/trace/x v0.1.0
 	go.opentelemetry.io/otel/trace v1.47.0
+	go.opentelemetry.io/otel/trace/x v0.1.0
+)
+
+replace (
+	go.opentelemetry.io/otel => github.com/dashpole/opentelemetry-go v0.11.1-0.20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/log => github.com/dashpole/opentelemetry-go/log v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/metric => github.com/dashpole/opentelemetry-go/metric v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/metric/x => github.com/dashpole/opentelemetry-go/metric/x v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/sdk => github.com/dashpole/opentelemetry-go/sdk v0.11.1-0.20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/sdk/metric => github.com/dashpole/opentelemetry-go/sdk/metric v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/sdk/metric/x => github.com/dashpole/opentelemetry-go/sdk/metric/x v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/sdk/trace/x => github.com/dashpole/opentelemetry-go/sdk/trace/x v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/trace => github.com/dashpole/opentelemetry-go/trace v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel/trace/x => github.com/dashpole/opentelemetry-go/trace/x v0.0.0-20261103215108-91a4a188d4e1
 )
 
 require (

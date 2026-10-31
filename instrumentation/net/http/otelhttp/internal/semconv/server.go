@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	metricx "go.opentelemetry.io/otel/metric/x"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/semconv/v1.43.0/httpconv"
 )
@@ -47,10 +48,16 @@ func NewHTTPServer(meter metric.Meter) HTTPServer {
 	server := HTTPServer{}
 
 	var err error
-	server.requestBodySizeHistogram, err = httpconv.NewServerRequestBodySize(meter)
+	server.requestBodySizeHistogram, err = httpconv.NewServerRequestBodySize(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	handleErr(err)
 
-	server.responseBodySizeHistogram, err = httpconv.NewServerResponseBodySize(meter)
+	server.responseBodySizeHistogram, err = httpconv.NewServerResponseBodySize(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	handleErr(err)
 
 	server.requestDurationHistogram, err = httpconv.NewServerRequestDuration(

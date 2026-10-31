@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata/metricdatatest"
+	sdkmetricx "go.opentelemetry.io/otel/sdk/metric/x"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/semconv/v1.43.0/goconv"
 )
@@ -68,7 +69,10 @@ func TestRuntimeWithLimit(t *testing.T) {
 	defer debug.SetMemoryLimit(math.MaxInt64)
 
 	reader := metric.NewManualReader()
-	mp := metric.NewMeterProvider(metric.WithReader(reader))
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	err := Start(WithMeterProvider(mp))
 	assert.NoError(t, err)
 	rm := metricdata.ResourceMetrics{}
@@ -181,12 +185,18 @@ func TestRuntimeWithLimit(t *testing.T) {
 	assertNonZeroValues(t, rm.ScopeMetrics[0])
 }
 
-func TestRuntimeOptInMetrics(t *testing.T) {
-	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.memory.gc.cycles, go.cpu.time")
+func TestRuntimeOptInMetricsViaView(t *testing.T) {
 	goruntime.GC()
 
 	reader := metric.NewManualReader()
-	mp := metric.NewMeterProvider(metric.WithReader(reader))
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+		sdkmetricx.WithView(sdkmetricx.NewView(
+			metric.Instrument{Name: "go.*"},
+			sdkmetricx.Stream{Enabled: new(true)},
+		)),
+	)
 	err := Start(WithMeterProvider(mp))
 	assert.NoError(t, err)
 	rm := metricdata.ResourceMetrics{}
@@ -238,9 +248,37 @@ func TestRuntimeOptInMetrics(t *testing.T) {
 	assert.Positive(t, totalCPUTime)
 }
 
+func TestRuntimeSelectiveDevelopmentMetricViaView(t *testing.T) {
+	goruntime.GC()
+
+	reader := metric.NewManualReader()
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		sdkmetricx.WithView(sdkmetricx.NewView(
+			metric.Instrument{Name: goconv.MemoryGCCyclesObservable{}.Name()},
+			sdkmetricx.Stream{Enabled: new(true)},
+		)),
+	)
+	require.NoError(t, Start(WithMeterProvider(mp)))
+	rm := metricdata.ResourceMetrics{}
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+	require.Len(t, rm.ScopeMetrics, 1)
+
+	metrics := map[string]metricdata.Metrics{}
+	for _, m := range rm.ScopeMetrics[0].Metrics {
+		metrics[m.Name] = m
+	}
+
+	assert.Contains(t, metrics, goconv.MemoryGCCyclesObservable{}.Name())
+	assert.NotContains(t, metrics, goconv.CPUTimeObservable{}.Name())
+}
+
 func TestRuntimeIgnoresProducerOptInMetrics(t *testing.T) {
 	reader := metric.NewManualReader()
-	mp := metric.NewMeterProvider(metric.WithReader(reader))
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.memory.gc.pause.duration")
 	err := Start(WithMeterProvider(mp))
 	assert.NoError(t, err)
@@ -263,9 +301,26 @@ func TestGoCollectorGetFloat(t *testing.T) {
 	assert.Zero(t, collector.getFloat(goCPUIdle), "an unread sample is zero")
 }
 
-func TestRuntimeWithoutOptInMetrics(t *testing.T) {
+func TestRuntimeDefaultStability(t *testing.T) {
 	reader := metric.NewManualReader()
 	mp := metric.NewMeterProvider(metric.WithReader(reader))
+	require.NoError(t, Start(WithMeterProvider(mp)))
+	rm := metricdata.ResourceMetrics{}
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+
+	// All Start metrics are Development, so none are emitted by default.
+	for _, sm := range rm.ScopeMetrics {
+		assert.Empty(t, sm.Metrics)
+	}
+}
+
+func TestRuntimeWithoutOptInMetrics(t *testing.T) {
+	// Development opt-in metrics are not enabled by minimum stability alone.
+	reader := metric.NewManualReader()
+	mp := metric.NewMeterProvider(
+		metric.WithReader(reader),
+		sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+	)
 	err := Start(WithMeterProvider(mp))
 	assert.NoError(t, err)
 	rm := metricdata.ResourceMetrics{}
@@ -284,9 +339,15 @@ func TestRuntimeDetailedMemoryAttributes(t *testing.T) {
 	reader := metric.NewManualReader()
 	mp := metric.NewMeterProvider(
 		metric.WithReader(reader),
-		metric.WithView(metric.NewView(
+		sdkmetricx.WithView(sdkmetricx.NewView(
 			metric.Instrument{Name: memoryUsed.Name()},
-			metric.Stream{AttributeFilter: func(_ attribute.KeyValue) bool { return true }},
+			sdkmetricx.Stream{
+				Enabled: new(true),
+				AttributeFilter: attribute.NewAllowKeysFilter(
+					memoryUsed.AttrMemoryType("").Key,
+					memoryUsed.AttrMemoryDetailedType("").Key,
+				),
+			},
 		)),
 	)
 	err := Start(WithMeterProvider(mp))
@@ -342,16 +403,21 @@ func TestRuntimeDetailedMemoryAttributes(t *testing.T) {
 }
 
 func TestRuntimeDetailedCPUAttributes(t *testing.T) {
-	t.Setenv("OTEL_GO_X_RUNTIME_METRICS_OPTIN", "go.cpu.time")
 	goruntime.GC()
 
 	cpuTime := goconv.CPUTimeObservable{}
 	reader := metric.NewManualReader()
 	mp := metric.NewMeterProvider(
 		metric.WithReader(reader),
-		metric.WithView(metric.NewView(
+		sdkmetricx.WithView(sdkmetricx.NewView(
 			metric.Instrument{Name: cpuTime.Name()},
-			metric.Stream{AttributeFilter: func(_ attribute.KeyValue) bool { return true }},
+			sdkmetricx.Stream{
+				Enabled: new(true),
+				AttributeFilter: attribute.NewAllowKeysFilter(
+					cpuTime.AttrCPUState("").Key,
+					cpuTime.AttrCPUDetailedState("").Key,
+				),
+			},
 		)),
 	)
 	err := Start(WithMeterProvider(mp))
@@ -400,6 +466,106 @@ func TestRuntimeDetailedCPUAttributes(t *testing.T) {
 		totalCPUTime += dp.Value
 	}
 	assert.Positive(t, totalCPUTime)
+}
+
+func TestRuntimeDevelopmentAttributes(t *testing.T) {
+	memoryUsed := goconv.MemoryUsed{}
+	cpuTime := goconv.CPUTimeObservable{}
+	memoryTypes := []metricdata.DataPoint[int64]{
+		{Attributes: attribute.NewSet(memoryUsed.AttrMemoryType(goconv.MemoryTypeStack))},
+		{Attributes: attribute.NewSet(memoryUsed.AttrMemoryType(goconv.MemoryTypeOther))},
+	}
+	cpuStates := []metricdata.DataPoint[float64]{
+		{Attributes: attribute.NewSet(cpuTime.AttrCPUState(goconv.CPUStateUser))},
+		{Attributes: attribute.NewSet(cpuTime.AttrCPUState(goconv.CPUStateGC))},
+		{Attributes: attribute.NewSet(cpuTime.AttrCPUState(goconv.CPUStateScavenge))},
+		{Attributes: attribute.NewSet(cpuTime.AttrCPUState(goconv.CPUStateIdle))},
+	}
+
+	enableView := func(name string, filter attribute.Filter) metric.Option {
+		return sdkmetricx.WithView(sdkmetricx.NewView(
+			metric.Instrument{Name: name},
+			sdkmetricx.Stream{Enabled: new(true), AttributeFilter: filter},
+		))
+	}
+
+	tests := []struct {
+		name       string
+		mpOpts     []metric.Option
+		wantMemory []metricdata.DataPoint[int64]
+		wantCPU    []metricdata.DataPoint[float64]
+	}{
+		{
+			// go.memory.detailed_type is recorded, but is not in the
+			// Attributes advisory parameter. go.cpu.time is opt-in.
+			name: "development minimum stability records development attributes",
+			mpOpts: []metric.Option{
+				sdkmetricx.WithMinimumStability(sdkmetricx.StabilityDevelopment),
+			},
+			wantMemory: memoryTypes,
+		},
+		{
+			name: "view enabling development metric does not enable development attributes",
+			mpOpts: []metric.Option{
+				enableView(memoryUsed.Name(), nil),
+				enableView(cpuTime.Name(), nil),
+			},
+			wantMemory: []metricdata.DataPoint[int64]{{}},
+			wantCPU:    []metricdata.DataPoint[float64]{{}},
+		},
+		{
+			name: "view attribute keys enable development attribute",
+			mpOpts: []metric.Option{
+				enableView(memoryUsed.Name(), attribute.NewAllowKeysFilter(memoryUsed.AttrMemoryType("").Key)),
+				enableView(cpuTime.Name(), attribute.NewAllowKeysFilter(cpuTime.AttrCPUState("").Key)),
+			},
+			wantMemory: memoryTypes,
+			wantCPU:    cpuStates,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			goruntime.GC()
+			reader := metric.NewManualReader()
+			mp := metric.NewMeterProvider(append([]metric.Option{metric.WithReader(reader)}, tt.mpOpts...)...)
+			require.NoError(t, Start(WithMeterProvider(mp)))
+			rm := metricdata.ResourceMetrics{}
+			require.NoError(t, reader.Collect(t.Context(), &rm))
+			require.Len(t, rm.ScopeMetrics, 1)
+
+			metrics := map[string]metricdata.Metrics{}
+			for _, m := range rm.ScopeMetrics[0].Metrics {
+				metrics[m.Name] = m
+			}
+
+			metricdatatest.AssertEqual(t, metricdata.Metrics{
+				Name:        memoryUsed.Name(),
+				Description: memoryUsed.Description(),
+				Unit:        memoryUsed.Unit(),
+				Data: metricdata.Sum[int64]{
+					Temporality: metricdata.CumulativeTemporality,
+					IsMonotonic: false,
+					DataPoints:  tt.wantMemory,
+				},
+			}, metrics[memoryUsed.Name()], metricdatatest.IgnoreTimestamp(), metricdatatest.IgnoreValue())
+
+			if tt.wantCPU == nil {
+				assert.NotContains(t, metrics, cpuTime.Name())
+				return
+			}
+			metricdatatest.AssertEqual(t, metricdata.Metrics{
+				Name:        cpuTime.Name(),
+				Description: cpuTime.Description(),
+				Unit:        cpuTime.Unit(),
+				Data: metricdata.Sum[float64]{
+					Temporality: metricdata.CumulativeTemporality,
+					IsMonotonic: true,
+					DataPoints:  tt.wantCPU,
+				},
+			}, metrics[cpuTime.Name()], metricdatatest.IgnoreTimestamp(), metricdatatest.IgnoreValue())
+		})
+	}
 }
 
 func assertNonZeroValues(t *testing.T, sm metricdata.ScopeMetrics) {

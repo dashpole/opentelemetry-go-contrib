@@ -57,7 +57,10 @@ const (
 // Start initializes reporting of runtime metrics using the supplied config.
 // For goroutine scheduling and GC pause metrics, additionally see [NewProducer].
 //
-// Metrics emitted by Start includes:
+// All metrics emitted by Start are Development metrics in the Go runtime
+// semantic conventions and are registered with StabilityDevelopment. The
+// following metrics are produced when the MeterProvider is configured with
+// WithMinimumStability(StabilityDevelopment) or when enabled via a View:
 //
 //	go.memory.used          By            Memory used by the Go runtime.
 //	go.memory.limit         By            Go runtime memory limit configured by the user, if a limit exists.
@@ -68,11 +71,16 @@ const (
 //	go.processor.limit      {thread}      The number of OS threads that can execute user-level Go code simultaneously.
 //	go.config.gogc          %             Heap size target percentage configured by the user, otherwise 100.
 //
-// The following opt-in metrics are produced when listed, comma-separated, in
-// the OTEL_GO_X_RUNTIME_METRICS_OPTIN environment variable:
+// The following metrics are also opt-in in the semantic conventions and are
+// registered with WithOptIn. They are only produced when enabled via a View:
 //
 //	go.memory.gc.cycles     {gc_cycle}    Number of completed GC cycles.
 //	go.cpu.time             s             Estimated CPU time spent by the Go runtime.
+//
+// The go.memory.type, go.memory.detailed_type, go.cpu.state, and
+// go.cpu.detailed_state attributes are Development attributes. They are only
+// recorded when the Meter reports them as enabled for StabilityDevelopment;
+// otherwise, the values they distinguish are summed.
 func Start(opts ...Option) error {
 	c := newConfig(opts...)
 	meter := c.MeterProvider.Meter(
@@ -83,40 +91,82 @@ func Start(opts ...Option) error {
 	memoryUsed, err := goconv.NewMemoryUsed(
 		meter,
 		metricx.WithDefaultAttributes((goconv.MemoryUsed{}).AttrMemoryType("").Key),
+		metricx.WithStability(metricx.StabilityDevelopment),
 	)
 	if err != nil {
 		return err
 	}
-	memoryLimit, err := goconv.NewMemoryLimit(meter)
+	memoryLimit, err := goconv.NewMemoryLimit(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	if err != nil {
 		return err
 	}
-	memoryAllocated, err := goconv.NewMemoryAllocated(meter)
+	memoryAllocated, err := goconv.NewMemoryAllocated(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	if err != nil {
 		return err
 	}
-	memoryAllocations, err := goconv.NewMemoryAllocations(meter)
+	memoryAllocations, err := goconv.NewMemoryAllocations(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	if err != nil {
 		return err
 	}
-	memoryGCGoal, err := goconv.NewMemoryGCGoal(meter)
+	memoryGCGoal, err := goconv.NewMemoryGCGoal(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	if err != nil {
 		return err
 	}
-	goroutineCount, err := goconv.NewGoroutineCount(meter)
+	goroutineCount, err := goconv.NewGoroutineCount(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	if err != nil {
 		return err
 	}
-	processorLimit, err := goconv.NewProcessorLimit(meter)
+	processorLimit, err := goconv.NewProcessorLimit(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
 	if err != nil {
 		return err
 	}
-	configGogc, err := goconv.NewConfigGogc(meter)
+	configGogc, err := goconv.NewConfigGogc(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+	)
+	if err != nil {
+		return err
+	}
+	gcCycles, err := goconv.NewMemoryGCCyclesObservable(
+		meter,
+		metricx.WithStability(metricx.StabilityDevelopment),
+		metricx.WithOptIn(),
+	)
+	if err != nil {
+		return err
+	}
+	cpuTime, err := goconv.NewCPUTimeObservable(
+		meter,
+		metricx.WithDefaultAttributes((goconv.CPUTimeObservable{}).AttrCPUState("").Key),
+		metricx.WithStability(metricx.StabilityDevelopment),
+		metricx.WithOptIn(),
+	)
 	if err != nil {
 		return err
 	}
 
 	memoryClasses := newMemoryClasses(memoryUsed)
+	cpuStates := newCPUStates(cpuTime)
+	memoryObservations := newClassObservations(memoryClasses)
+	cpuObservations := newClassObservations(cpuStates)
 	instruments := []metric.Observable{
 		memoryUsed.Inst(),
 		memoryLimit.Inst(),
@@ -126,36 +176,12 @@ func Start(opts ...Option) error {
 		goroutineCount.Inst(),
 		processorLimit.Inst(),
 		configGogc.Inst(),
+		gcCycles.Inst(),
+		cpuTime.Inst(),
 	}
-	metricNames := slices.Clone(runtimeMetrics)
-
-	enableGCCycles := optInGCCycles.enabled()
-	var gcCycles goconv.MemoryGCCyclesObservable
-	if enableGCCycles {
-		gcCycles, err = goconv.NewMemoryGCCyclesObservable(meter)
-		if err != nil {
-			return err
-		}
-		instruments = append(instruments, gcCycles.Inst())
-		metricNames = append(metricNames, goGCCycles)
-	}
-
-	enableCPUTime := optInCPUTime.enabled()
-	var cpuTime goconv.CPUTimeObservable
-	var cpuStates []cpuState
-	if enableCPUTime {
-		cpuTime, err = goconv.NewCPUTimeObservable(
-			meter,
-			metricx.WithDefaultAttributes((goconv.CPUTimeObservable{}).AttrCPUState("").Key),
-		)
-		if err != nil {
-			return err
-		}
-		cpuStates = newCPUStates(cpuTime)
-		instruments = append(instruments, cpuTime.Inst())
-		for _, state := range cpuStates {
-			metricNames = append(metricNames, state.runtimeMetric)
-		}
+	metricNames := append(slices.Clone(runtimeMetrics), goGCCycles)
+	for _, state := range cpuStates {
+		metricNames = append(metricNames, state.runtimeMetric)
 	}
 
 	collector := newCollector(c.MinimumRefreshInterval, metricNames)
@@ -165,8 +191,12 @@ func Start(opts ...Option) error {
 			lock.Lock()
 			defer lock.Unlock()
 			collector.refresh()
-			for _, memClass := range memoryClasses {
-				o.ObserveInt64(memoryUsed.Inst(), collector.getInt(memClass.runtimeMetric), memClass.attributes)
+			for _, obs := range memoryObservations.enabled(meter) {
+				var v int64
+				for _, name := range obs.runtimeMetrics {
+					v += collector.getInt(name)
+				}
+				o.ObserveInt64(memoryUsed.Inst(), v, obs.attributes)
 			}
 			// Only observe the limit metric if a limit exists
 			if limit := collector.getInt(goMemoryLimit); limit != math.MaxInt64 {
@@ -178,11 +208,13 @@ func Start(opts ...Option) error {
 			o.ObserveInt64(goroutineCount.Inst(), collector.getInt(goGoroutines))
 			o.ObserveInt64(processorLimit.Inst(), collector.getInt(goMaxProcs))
 			o.ObserveInt64(configGogc.Inst(), collector.getInt(goConfigGC))
-			if enableGCCycles {
-				o.ObserveInt64(gcCycles.Inst(), collector.getInt(goGCCycles))
-			}
-			for _, state := range cpuStates {
-				o.ObserveFloat64(cpuTime.Inst(), collector.getFloat(state.runtimeMetric), state.attributes)
+			o.ObserveInt64(gcCycles.Inst(), collector.getInt(goGCCycles))
+			for _, obs := range cpuObservations.enabled(meter) {
+				var v float64
+				for _, name := range obs.runtimeMetrics {
+					v += collector.getFloat(name)
+				}
+				o.ObserveFloat64(cpuTime.Inst(), v, obs.attributes)
 			}
 			return nil
 		},
@@ -217,24 +249,23 @@ var runtimeMetrics = []string{
 	goConfigGC,
 }
 
-// memoryClass maps a runtime memory class to its go.memory.type and
-// go.memory.detailed_type attributes.
-type memoryClass struct {
-	runtimeMetric string
-	attributes    metric.ObserveOption
+// attrClass maps a runtime/metrics sample to the general (e.g. go.memory.type)
+// and detailed (e.g. go.memory.detailed_type) Development attributes that
+// describe it.
+type attrClass struct {
+	runtimeMetric     string
+	general, detailed attribute.KeyValue
 }
 
-func newMemoryClasses(memoryUsed goconv.MemoryUsed) []memoryClass {
-	newClass := func(runtimeMetric string, mType goconv.MemoryTypeAttr, detailedType string) memoryClass {
-		return memoryClass{
+func newMemoryClasses(memoryUsed goconv.MemoryUsed) []attrClass {
+	newClass := func(runtimeMetric string, mType goconv.MemoryTypeAttr, detailedType string) attrClass {
+		return attrClass{
 			runtimeMetric: runtimeMetric,
-			attributes: metric.WithAttributeSet(attribute.NewSet(
-				memoryUsed.AttrMemoryType(mType),
-				memoryUsed.AttrMemoryDetailedType(detailedType),
-			)),
+			general:       memoryUsed.AttrMemoryType(mType),
+			detailed:      memoryUsed.AttrMemoryDetailedType(detailedType),
 		}
 	}
-	return []memoryClass{
+	return []attrClass{
 		newClass(goHeapMemory, goconv.MemoryTypeStack, "heap/stacks"),
 		newClass(goMemoryHeapFree, goconv.MemoryTypeOther, "heap/free"),
 		newClass(goMemoryHeapObjects, goconv.MemoryTypeOther, "heap/objects"),
@@ -250,24 +281,15 @@ func newMemoryClasses(memoryUsed goconv.MemoryUsed) []memoryClass {
 	}
 }
 
-// cpuState maps a runtime CPU class to its go.cpu.state and
-// go.cpu.detailed_state attributes.
-type cpuState struct {
-	runtimeMetric string
-	attributes    metric.ObserveOption
-}
-
-func newCPUStates(cpuTime goconv.CPUTimeObservable) []cpuState {
-	newState := func(runtimeMetric string, state goconv.CPUStateAttr, detailedState string) cpuState {
-		return cpuState{
+func newCPUStates(cpuTime goconv.CPUTimeObservable) []attrClass {
+	newState := func(runtimeMetric string, state goconv.CPUStateAttr, detailedState string) attrClass {
+		return attrClass{
 			runtimeMetric: runtimeMetric,
-			attributes: metric.WithAttributeSet(attribute.NewSet(
-				cpuTime.AttrCPUState(state),
-				cpuTime.AttrCPUDetailedState(detailedState),
-			)),
+			general:       cpuTime.AttrCPUState(state),
+			detailed:      cpuTime.AttrCPUDetailedState(detailedState),
 		}
 	}
-	return []cpuState{
+	return []attrClass{
 		newState(goCPUUser, goconv.CPUStateUser, "user"),
 		newState(goCPUGCMarkAssist, goconv.CPUStateGC, "gc/mark/assist"),
 		newState(goCPUGCMarkDedicated, goconv.CPUStateGC, "gc/mark/dedicated"),
@@ -277,6 +299,68 @@ func newCPUStates(cpuTime goconv.CPUTimeObservable) []cpuState {
 		newState(goCPUScavengeBackground, goconv.CPUStateScavenge, "scavenge/background"),
 		newState(goCPUIdle, goconv.CPUStateIdle, "idle"),
 	}
+}
+
+// observation is the sum of runtime/metrics samples observed with a single
+// attribute set.
+type observation struct {
+	runtimeMetrics []string
+	attributes     metric.ObserveOption
+}
+
+// classObservations holds the observations of a set of attrClasses for each
+// combination of enabled general and detailed Development attributes. They
+// are precomputed so that collection does not allocate attribute sets.
+type classObservations struct {
+	generalKey, detailedKey attribute.Key
+	// byEnabled is indexed by [general enabled][detailed enabled].
+	byEnabled [2][2][]observation
+}
+
+func newClassObservations(classes []attrClass) classObservations {
+	c := classObservations{
+		generalKey:  classes[0].general.Key,
+		detailedKey: classes[0].detailed.Key,
+	}
+	for general := range 2 {
+		for detailed := range 2 {
+			obs := &c.byEnabled[general][detailed]
+			index := make(map[attribute.Distinct]int)
+			for _, class := range classes {
+				var kvs []attribute.KeyValue
+				if general == 1 {
+					kvs = append(kvs, class.general)
+				}
+				if detailed == 1 {
+					kvs = append(kvs, class.detailed)
+				}
+				set := attribute.NewSet(kvs...)
+				if i, ok := index[set.Equivalent()]; ok {
+					(*obs)[i].runtimeMetrics = append((*obs)[i].runtimeMetrics, class.runtimeMetric)
+					continue
+				}
+				index[set.Equivalent()] = len(*obs)
+				*obs = append(*obs, observation{
+					runtimeMetrics: []string{class.runtimeMetric},
+					attributes:     metric.WithAttributeSet(set),
+				})
+			}
+		}
+	}
+	return c
+}
+
+// enabled returns the observations to record given the Development
+// attributes m reports as enabled.
+func (c classObservations) enabled(m metric.Meter) []observation {
+	var general, detailed int
+	if metricx.AttributeEnabled(m, c.generalKey, metricx.StabilityDevelopment) {
+		general = 1
+	}
+	if metricx.AttributeEnabled(m, c.detailedKey, metricx.StabilityDevelopment) {
+		detailed = 1
+	}
+	return c.byEnabled[general][detailed]
 }
 
 type goCollector struct {

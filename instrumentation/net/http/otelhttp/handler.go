@@ -11,7 +11,9 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
+	otelsemconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
+	tracex "go.opentelemetry.io/otel/trace/x"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/request"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconv"
@@ -209,13 +211,24 @@ func (h *middleware) serveHTTP(w http.ResponseWriter, r *http.Request, next http
 	bytesWritten := rww.BytesWritten()
 	span.SetStatus(h.semconv.Status(statusCode))
 	bytesRead := bw.BytesRead()
-	span.SetAttributes(h.semconv.ResponseTraceAttrs(semconv.ResponseTelemetry{
+	resp := semconv.ResponseTelemetry{
 		StatusCode: statusCode,
-		ReadBytes:  bytesRead,
 		ReadError:  bw.Error(),
-		WriteBytes: bytesWritten,
 		WriteError: rww.Error(),
-	})...)
+	}
+	// http.request.body.size and http.response.body.size are Development
+	// attributes on the Stable HTTP server span. They are only recorded when
+	// the Tracer reports them as enabled (for example, when the
+	// TracerProvider's minimum stability is Development). Semantic conventions
+	// currently list them as opt_in only because a stable span cannot reference
+	// a recommended development attribute, a rule OTEP 5399 proposes relaxing.
+	if tracex.AttributeEnabled(tracer, otelsemconv.HTTPRequestBodySizeKey, tracex.StabilityDevelopment) {
+		resp.ReadBytes = bytesRead
+	}
+	if tracex.AttributeEnabled(tracer, otelsemconv.HTTPResponseBodySizeKey, tracex.StabilityDevelopment) {
+		resp.WriteBytes = bytesWritten
+	}
+	span.SetAttributes(h.semconv.ResponseTraceAttrs(resp)...)
 
 	h.semconv.RecordMetrics(ctx, semconv.ServerMetricData{
 		ServerName:   h.server,

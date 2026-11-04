@@ -222,10 +222,10 @@ func (h *middleware) serveHTTP(w http.ResponseWriter, r *http.Request, next http
 	// TracerProvider's minimum stability is Development). Semantic conventions
 	// currently list them as opt_in only because a stable span cannot reference
 	// a recommended development attribute, a rule OTEP 5399 proposes relaxing.
-	if tracex.AttributeEnabled(tracer, otelsemconv.HTTPRequestBodySizeKey, tracex.StabilityDevelopment) {
+	if tracex.AttributeEnabled(ctx, tracer, otelsemconv.HTTPRequestBodySizeKey, tracex.StabilityDevelopment) {
 		resp.ReadBytes = bytesRead
 	}
-	if tracex.AttributeEnabled(tracer, otelsemconv.HTTPResponseBodySizeKey, tracex.StabilityDevelopment) {
+	if tracex.AttributeEnabled(ctx, tracer, otelsemconv.HTTPResponseBodySizeKey, tracex.StabilityDevelopment) {
 		resp.WriteBytes = bytesWritten
 	}
 	span.SetAttributes(h.semconv.ResponseTraceAttrs(resp)...)

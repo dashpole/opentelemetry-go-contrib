@@ -17,16 +17,16 @@ require (
 )
 
 replace (
-	go.opentelemetry.io/otel => github.com/dashpole/opentelemetry-go v0.11.1-0.20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/log => github.com/dashpole/opentelemetry-go/log v0.0.0-20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/metric => github.com/dashpole/opentelemetry-go/metric v0.0.0-20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/metric/x => github.com/dashpole/opentelemetry-go/metric/x v0.0.0-20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/sdk => github.com/dashpole/opentelemetry-go/sdk v0.11.1-0.20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/sdk/metric => github.com/dashpole/opentelemetry-go/sdk/metric v0.0.0-20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/sdk/metric/x => github.com/dashpole/opentelemetry-go/sdk/metric/x v0.0.0-20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/sdk/trace/x => github.com/dashpole/opentelemetry-go/sdk/trace/x v0.0.0-20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/trace => github.com/dashpole/opentelemetry-go/trace v0.0.0-20261103215108-91a4a188d4e1
-	go.opentelemetry.io/otel/trace/x => github.com/dashpole/opentelemetry-go/trace/x v0.0.0-20261103215108-91a4a188d4e1
+	go.opentelemetry.io/otel => github.com/dashpole/opentelemetry-go v0.11.1-0.20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/log => github.com/dashpole/opentelemetry-go/log v0.0.0-20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/metric => github.com/dashpole/opentelemetry-go/metric v0.0.0-20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/metric/x => github.com/dashpole/opentelemetry-go/metric/x v0.0.0-20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/sdk => github.com/dashpole/opentelemetry-go/sdk v0.11.1-0.20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/sdk/metric => github.com/dashpole/opentelemetry-go/sdk/metric v0.0.0-20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/sdk/metric/x => github.com/dashpole/opentelemetry-go/sdk/metric/x v0.0.0-20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/sdk/trace/x => github.com/dashpole/opentelemetry-go/sdk/trace/x v0.0.0-20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/trace => github.com/dashpole/opentelemetry-go/trace v0.0.0-20261104170129-6f454a7b92ba
+	go.opentelemetry.io/otel/trace/x => github.com/dashpole/opentelemetry-go/trace/x v0.0.0-20261104170129-6f454a7b92ba
 )
 
 require (

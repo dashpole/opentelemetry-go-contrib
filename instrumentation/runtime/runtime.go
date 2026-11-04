@@ -187,11 +187,11 @@ func Start(opts ...Option) error {
 	collector := newCollector(c.MinimumRefreshInterval, metricNames)
 	var lock sync.Mutex
 	_, err = meter.RegisterCallback(
-		func(_ context.Context, o metric.Observer) error {
+		func(ctx context.Context, o metric.Observer) error {
 			lock.Lock()
 			defer lock.Unlock()
 			collector.refresh()
-			for _, obs := range memoryObservations.enabled(meter) {
+			for _, obs := range memoryObservations.enabled(ctx, meter) {
 				var v int64
 				for _, name := range obs.runtimeMetrics {
 					v += collector.getInt(name)
@@ -209,7 +209,7 @@ func Start(opts ...Option) error {
 			o.ObserveInt64(processorLimit.Inst(), collector.getInt(goMaxProcs))
 			o.ObserveInt64(configGogc.Inst(), collector.getInt(goConfigGC))
 			o.ObserveInt64(gcCycles.Inst(), collector.getInt(goGCCycles))
-			for _, obs := range cpuObservations.enabled(meter) {
+			for _, obs := range cpuObservations.enabled(ctx, meter) {
 				var v float64
 				for _, name := range obs.runtimeMetrics {
 					v += collector.getFloat(name)
@@ -352,12 +352,12 @@ func newClassObservations(classes []attrClass) classObservations {
 
 // enabled returns the observations to record given the Development
 // attributes m reports as enabled.
-func (c classObservations) enabled(m metric.Meter) []observation {
+func (c classObservations) enabled(ctx context.Context, m metric.Meter) []observation {
 	var general, detailed int
-	if metricx.AttributeEnabled(m, c.generalKey, metricx.StabilityDevelopment) {
+	if metricx.AttributeEnabled(ctx, m, c.generalKey, metricx.StabilityDevelopment) {
 		general = 1
 	}
-	if metricx.AttributeEnabled(m, c.detailedKey, metricx.StabilityDevelopment) {
+	if metricx.AttributeEnabled(ctx, m, c.detailedKey, metricx.StabilityDevelopment) {
 		detailed = 1
 	}
 	return c.byEnabled[general][detailed]
